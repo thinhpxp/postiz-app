@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Agent } from '@mastra/core/agent';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI } from '@ai-sdk/openai';
 import { Memory } from '@mastra/memory';
 import { pStore } from '@gitroom/nestjs-libraries/chat/mastra.store';
 import { array, object, string } from 'zod';
@@ -113,7 +113,12 @@ export class LoadToolsService {
       )}
 `;
       },
-      model: openai('gpt-5.2'),
+      model: createOpenAI({
+        apiKey: process.env.OPENAI_API_KEY || 'sk-placeholder',
+        ...(process.env.OPENAI_BASE_URL
+          ? { baseURL: process.env.OPENAI_BASE_URL }
+          : {}),
+      })(process.env.OPENAI_MODEL || 'gpt-4.1'),
       tools,
       memory: new Memory({
         storage: pStore,

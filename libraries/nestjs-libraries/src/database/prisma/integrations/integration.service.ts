@@ -436,26 +436,116 @@ export class IntegrationService {
       );
     }
 
-    const getIntegrationInformation = await provider.fetchPageInformation(
-      getIntegration.token,
-      data
-    );
+    const items: any[] = Array.isArray(data?.items)
+      ? data.items
+      : Array.isArray(data)
+      ? data
+      : [data];
 
-    await this.checkForDeletedOnceAndUpdate(
-      org,
-      String(getIntegrationInformation.id)
-    );
-    await this._integrationRepository.updateIntegration(id, {
-      picture: getIntegrationInformation.picture,
-      internalId: String(getIntegrationInformation.id),
-      organizationId: org,
-      name: getIntegrationInformation.name,
-      inBetweenSteps: false,
-      token: getIntegrationInformation.access_token,
-      profile: getIntegrationInformation.username,
-    });
+    if (!items.length) {
+      throw new HttpException('No pages selected', HttpStatus.BAD_REQUEST);
+    }
 
-    return { success: true };
+    const rootId =
+      getIntegration.rootInternalId || getIntegration.internalId;
+
+    const results = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const itemData = items[i];
+      try {
+        const getIntegrationInformation = await provider.fetchPageInformation(
+          getIntegration.token,
+          itemData
+        );
+
+        if (!getIntegrationInformation || !getIntegrationInformation.id) {
+          continue;
+        }
+
+        await this.checkForDeletedOnceAndUpdate(
+          org,
+          String(getIntegrationInformation.id)
+        );
+
+        if (i === 0) {
+          const updated = await this._integrationRepository.updateIntegration(
+            id,
+            {
+              picture: getIntegrationInformation.picture,
+              internalId: String(getIntegrationInformation.id),
+              organizationId: org,
+              name: getIntegrationInformation.name,
+              inBetweenSteps: false,
+              token:
+                getIntegrationInformation.access_token || getIntegration.token,
+              profile: getIntegrationInformation.username || '',
+            }
+          );
+          if (rootId) {
+            await this._integrationRepository.updateRootInternalId(
+              org,
+              updated.id,
+              rootId
+            );
+          }
+          results.push(updated);
+        } else {
+          const remainingSeconds = getIntegration.tokenExpiration
+            ? Math.max(
+                0,
+                Math.floor(
+                  (new Date(getIntegration.tokenExpiration).getTime() -
+                    Date.now()) /
+                    1000
+                )
+              )
+            : 999999999;
+
+          const created =
+            await this._integrationRepository.createOrUpdateIntegration(
+              getIntegration.additionalSettings
+                ? JSON.parse(getIntegration.additionalSettings)
+                : undefined,
+              !!provider.oneTimeToken,
+              org,
+              getIntegrationInformation.name,
+              getIntegrationInformation.picture,
+              'social',
+              String(getIntegrationInformation.id),
+              getIntegration.providerIdentifier,
+              getIntegrationInformation.access_token || getIntegration.token,
+              getIntegration.refreshToken || '',
+              remainingSeconds,
+              getIntegrationInformation.username || '',
+              false,
+              undefined,
+              undefined,
+              getIntegration.customInstanceDetails
+            );
+
+          if (rootId) {
+            await this._integrationRepository.updateRootInternalId(
+              org,
+              created.id,
+              rootId
+            );
+          }
+
+          this._refreshIntegrationService
+            .startRefreshWorkflow(org, created.id, provider)
+            .catch((err) => {
+              console.log(err);
+            });
+
+          results.push(created);
+        }
+      } catch (err) {
+        console.error('Failed to connect page item:', err);
+      }
+    }
+
+    return { success: true, count: results.length };
   }
 
   async checkAnalytics(

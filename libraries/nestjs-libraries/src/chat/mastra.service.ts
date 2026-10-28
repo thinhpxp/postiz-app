@@ -6,8 +6,13 @@ import { LoadToolsService } from '@gitroom/nestjs-libraries/chat/load.tools.serv
 
 @Injectable()
 export class MastraService {
-  static mastra: Mastra;
+  static mastra: Mastra | null = null;
   constructor(private _loadToolsService: LoadToolsService) {}
+
+  static clearCache() {
+    MastraService.mastra = null;
+  }
+
   async mastra() {
     MastraService.mastra =
       MastraService.mastra ||

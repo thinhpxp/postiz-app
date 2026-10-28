@@ -5,6 +5,7 @@ import {
   PLATFORM_DEFINITIONS,
   PlatformDefinition,
 } from './platform.metadata';
+import { MastraService } from '@gitroom/nestjs-libraries/chat/mastra.service';
 
 export interface PlatformConfigResponse extends PlatformDefinition {
   isConfigured: boolean;
@@ -175,6 +176,10 @@ export class PlatformConfigService implements OnModuleInit {
       process.env[field.key] = trimmed;
     }
 
+    if (platformId === 'openai') {
+      MastraService.clearCache();
+    }
+
     return { success: true, platformId };
   }
 
@@ -190,6 +195,11 @@ export class PlatformConfigService implements OnModuleInit {
     }
 
     await this._platformConfigRepo.deleteConfigsByPlatform(platformId);
+
+    if (platformId === 'openai') {
+      MastraService.clearCache();
+    }
+
     return { success: true, platformId };
   }
 

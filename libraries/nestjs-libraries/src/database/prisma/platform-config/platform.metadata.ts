@@ -344,6 +344,22 @@ export const PLATFORM_DEFINITIONS: PlatformDefinition[] = [
         placeholder: 'sk-...',
         description: 'Key for AI post generation and captions',
       },
+      {
+        key: 'OPENAI_MODEL',
+        label: 'Model Name',
+        type: 'text',
+        isSecret: false,
+        placeholder: 'gpt-4.1 (or gpt-4o, gpt-4o-mini)',
+        description: 'AI model to use for chat and generation',
+      },
+      {
+        key: 'OPENAI_BASE_URL',
+        label: 'API Base URL',
+        type: 'text',
+        isSecret: false,
+        placeholder: 'https://api.openai.com/v1 (optional)',
+        description: 'Custom AI API endpoint if using OpenRouter, DeepSeek, or local proxy',
+      },
     ],
   },
 ];

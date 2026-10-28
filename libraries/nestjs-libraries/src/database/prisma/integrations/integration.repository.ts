@@ -248,6 +248,18 @@ export class IntegrationRepository {
     });
   }
 
+  updateRootInternalId(org: string, id: string, rootInternalId: string) {
+    return this._integration.model.integration.update({
+      where: {
+        id,
+        organizationId: org,
+      },
+      data: {
+        rootInternalId,
+      },
+    });
+  }
+
   getIntegrationByInternalId(org: string, internalId: string) {
     return this._integration.model.integration.findFirst({
       where: {

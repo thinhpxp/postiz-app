@@ -40,42 +40,127 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { ExistingDataContextProvider } from '@gitroom/frontend/components/launches/helpers/use.existing.data';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import useSWR from 'swr';
+import {
+  AiConfigData,
+  AiConfigSetup,
+  AiConfigModal,
+} from '@gitroom/frontend/components/agents/ai.config.component';
 
 export const AgentChat: FC = () => {
   const { backendUrl } = useVariables();
   const params = useParams<{ id: string }>();
   const { properties } = useContext(PropertiesContext);
   const t = useT();
+  const fetch = useFetch();
+
+  const [showConfigModal, setShowConfigModal] = useState(false);
+
+  const {
+    data: aiConfig,
+    mutate: mutateAiConfig,
+    isLoading,
+  } = useSWR<AiConfigData>('/copilot/config', async () => {
+    const res = await fetch('/copilot/config');
+    return res.json();
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-[#612BD3] border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-textColor/60">
+            {t('loading', 'Loading...')}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!aiConfig?.isConfigured) {
+    return (
+      <AiConfigSetup
+        config={aiConfig}
+        onSaveSuccess={(updated) => mutateAiConfig(updated)}
+      />
+    );
+  }
 
   return (
-    <CopilotKit
-      {...(params.id === 'new' ? {} : { threadId: params.id })}
-      credentials="include"
-      runtimeUrl={backendUrl + '/copilot/agent'}
-      useSingleEndpoint={true}
-      showDevConsole={false}
-      agent="postiz"
-      properties={{
-        integrations: properties,
-      }}
-    >
-      <Hooks />
-      <LoadMessages id={params.id} />
-      <div
-        style={
-          {
-            '--copilot-kit-primary-color': 'var(--new-btn-text)',
-            '--copilot-kit-background-color': 'var(--new-bg-color)',
-          } as CopilotKitCSSProperties
-        }
-        className="trz agent bg-newBgColorInner flex flex-col gap-[15px] transition-all flex-1 items-center relative"
+    <>
+      <CopilotKit
+        {...(params.id === 'new' ? {} : { threadId: params.id })}
+        credentials="include"
+        runtimeUrl={backendUrl + '/copilot/agent'}
+        useSingleEndpoint={true}
+        showDevConsole={false}
+        agent="postiz"
+        properties={{
+          integrations: properties,
+        }}
       >
-        <div className="absolute left-0 w-full h-full pb-[20px]">
-          <CopilotChat
-            className="w-full h-full"
-            labels={{
-              title: t('your_assistant', 'Your Assistant'),
-              initial: t('agent_welcome_message', `Hello, I am your Postiz agent 🙌🏻.
+        <Hooks />
+        <LoadMessages id={params.id} />
+        <div
+          style={
+            {
+              '--copilot-kit-primary-color': 'var(--new-btn-text)',
+              '--copilot-kit-background-color': 'var(--new-bg-color)',
+            } as CopilotKitCSSProperties
+          }
+          className="trz agent bg-newBgColorInner flex flex-col transition-all flex-1 items-center relative w-full h-full"
+        >
+          {/* Header Bar with AI Status and Config Button */}
+          <div className="w-full flex items-center justify-between px-5 py-2.5 border-b border-newTableBorder bg-newBgColorInner z-20 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{t('ai_active', 'AI Active')}</span>
+              </div>
+              <span className="text-xs text-textColor/70 font-mono bg-newBgColor px-2.5 py-0.5 rounded border border-newTableBorder">
+                {aiConfig?.model || 'gpt-4.1'}
+              </span>
+            </div>
+            {aiConfig?.isAdmin && (
+              <button
+                type="button"
+                onClick={() => setShowConfigModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-btnSimple hover:bg-boxHover text-textColor border border-newTableBorder transition-all cursor-pointer shadow-sm"
+              >
+                <svg
+                  className="w-3.5 h-3.5 text-[#612BD3]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+                <span>{t('ai_settings', 'Cấu hình AI')}</span>
+              </button>
+            )}
+          </div>
+
+          {/* CopilotChat */}
+          <div className="absolute left-0 top-[48px] w-full h-[calc(100%-48px)] pb-[20px]">
+            <CopilotChat
+              className="w-full h-full"
+              labels={{
+                title: t('your_assistant', 'Your Assistant'),
+                initial: t(
+                  'agent_welcome_message',
+                  `Hello, I am your Postiz agent 🙌🏻.
               
 I can schedule a post or multiple posts to multiple channels and generate pictures and videos.
 
@@ -84,14 +169,32 @@ You can select the channels you want to use from the left menu.
 You can see your previous conversations from the right menu.
 
 You can also use me as an MCP Server, check Settings >> Agents / Dev
-`),
-            }}
-            UserMessage={Message}
-            Input={NewInput}
-          />
+`
+                ),
+              }}
+              UserMessage={Message}
+              Input={NewInput}
+            />
+          </div>
         </div>
-      </div>
-    </CopilotKit>
+      </CopilotKit>
+
+      <AiConfigModal
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        config={aiConfig}
+        onSaveSuccess={(updated) => mutateAiConfig(updated)}
+        onDeleteSuccess={() =>
+          mutateAiConfig({
+            isConfigured: false,
+            maskedKey: '',
+            model: 'gpt-4.1',
+            baseUrl: '',
+            isAdmin: true,
+          })
+        }
+      />
+    </>
   );
 };
 
