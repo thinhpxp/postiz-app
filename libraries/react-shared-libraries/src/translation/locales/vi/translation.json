@@ -998,6 +998,8 @@
   "ai_save_failed": "Lỗi khi lưu cấu hình AI",
   "ai_api_key_required": "Vui lòng nhập API Key để kích hoạt AI",
   "ai_delete_confirm": "Bạn có chắc chắn muốn gỡ cấu hình AI? Trợ lý AI sẽ ngừng hoạt động cho đến khi được cấu hình lại.",
-  "ai_deleted_success": "Đã gỡ cấu hình AI!"
+  "ai_deleted_success": "Đã gỡ cấu hình AI!",
+  "error_posts": "Thất bại",
+  "no_error_posts": "Không có bài đăng nào bị lỗi"
 }
 

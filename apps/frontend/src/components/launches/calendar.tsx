@@ -681,6 +681,8 @@ export const ListView = () => {
       ? t('no_draft_posts', 'No draft posts')
       : listState === 'published'
       ? t('no_published_posts', 'No published posts')
+      : listState === 'error'
+      ? t('no_error_posts', 'No failed posts')
       : t('no_posts', 'No posts');
 
   // Use shared post actions hook

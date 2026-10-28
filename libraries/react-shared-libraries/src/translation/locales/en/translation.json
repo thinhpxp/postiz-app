@@ -1000,6 +1000,8 @@
   "ai_save_failed": "Failed to save AI configuration",
   "ai_api_key_required": "Please provide an API Key to activate AI",
   "ai_delete_confirm": "Are you sure you want to remove the AI configuration? The AI assistant will stop working until reconfigured.",
-  "ai_deleted_success": "AI configuration removed!"
+  "ai_deleted_success": "AI configuration removed!",
+  "error_posts": "Failed",
+  "no_error_posts": "No failed posts"
 }
 
