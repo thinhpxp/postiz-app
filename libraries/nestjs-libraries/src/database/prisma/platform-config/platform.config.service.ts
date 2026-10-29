@@ -89,7 +89,8 @@ export class PlatformConfigService implements OnModuleInit {
       'http://localhost:4007'
     ).replace(/\/+$/, '');
 
-    return PLATFORM_DEFINITIONS.map((def) => {
+    return PLATFORM_DEFINITIONS.filter((def) => def.category !== 'ai').map(
+      (def) => {
       const fieldValues: PlatformConfigResponse['fieldValues'] = {};
       let hasRequiredKey = false;
 

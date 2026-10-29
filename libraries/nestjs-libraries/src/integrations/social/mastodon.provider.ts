@@ -19,6 +19,8 @@ import { Integration } from '@prisma/client';
 import { number, string } from 'yup';
 import FormDataUpload from 'form-data';
 import { PassThrough, Readable } from 'stream';
+import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
 
 // Travels through the workflow history between postPending, checkPostStatus
 // and finalizePost - keep it small JSON (the instance url, media ids and the
@@ -179,21 +181,30 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
     // and the whole request is rebuilt per attempt by runStreamedUpload since
     // a consumed stream can't be replayed.
     const media = await this.runStreamedUpload<{ id: string }>(async () => {
-      const fileResponse = await fetch(fileUrl, {
-        // identity encoding so content-length matches the streamed bytes
-        headers: { 'accept-encoding': 'identity' },
-        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-        dispatcher: getSsrfSafeDispatcher(),
-      });
-      if (!fileResponse.ok || !fileResponse.body) {
-        throw new Error(`Failed to fetch media: ${fileResponse.statusText}`);
+      let fileStream: any;
+      let contentLength: number;
+      const local = this.tryResolveLocalUploadPath(fileUrl);
+      if (local) {
+        contentLength = (await stat(local)).size;
+        fileStream = createReadStream(local);
+      } else {
+        const fileResponse = await fetch(fileUrl, {
+          // identity encoding so content-length matches the streamed bytes
+          headers: { 'accept-encoding': 'identity' },
+          // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+          dispatcher: getSsrfSafeDispatcher(),
+        });
+        if (!fileResponse.ok || !fileResponse.body) {
+          throw new Error(`Failed to fetch media: ${fileResponse.statusText}`);
+        }
+        contentLength = Number(
+          fileResponse.headers.get('content-length') || 0
+        );
+        fileStream = Readable.fromWeb(fileResponse.body as any);
       }
-      const contentLength = Number(
-        fileResponse.headers.get('content-length') || 0
-      );
 
       const form = new FormDataUpload();
-      form.append('file', Readable.fromWeb(fileResponse.body as any), {
+      form.append('file', fileStream, {
         filename: fileUrl.split('/').pop()?.split('?')[0] || 'file',
         ...(contentLength ? { knownLength: contentLength } : {}),
       });

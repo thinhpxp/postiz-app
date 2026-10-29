@@ -466,23 +466,67 @@ export class PinterestProvider
             ? { dominant_color: pendingData.settings.dominant_color }
             : {}),
           board_id: pendingData.settings.board,
-          media_source: pendingData.mediaId
-            ? {
+          media_source: await (async () => {
+            if (pendingData.mediaId) {
+              return {
                 source_type: 'video_id',
                 media_id: pendingData.mediaId,
                 cover_image_url: pendingData.coverPath,
+              };
+            }
+            if (mapImages?.length === 1) {
+              const imgPath = mapImages[0].path;
+              const isLocal =
+                !imgPath.startsWith('http') ||
+                imgPath.includes('localhost') ||
+                imgPath.includes('127.0.0.1');
+              if (isLocal) {
+                const buffer = await this.readOrFetch(imgPath);
+                const isJpg =
+                  imgPath.toLowerCase().endsWith('.jpg') ||
+                  imgPath.toLowerCase().endsWith('.jpeg');
+                return {
+                  source_type: 'image_base64',
+                  content_type: isJpg ? 'image/jpeg' : 'image/png',
+                  data: buffer.toString('base64'),
+                };
               }
-            : mapImages?.length === 1
-            ? {
+              return {
                 source_type: 'image_url',
-                url: mapImages?.[0]?.path,
-              }
-            : {
-                source_type: 'multiple_image_urls',
-                items: mapImages.map((m) => ({
-                  url: m.path,
-                })),
-              },
+                url: imgPath,
+              };
+            }
+            const hasLocal = mapImages.some(
+              (m) =>
+                !m.path.startsWith('http') ||
+                m.path.includes('localhost') ||
+                m.path.includes('127.0.0.1')
+            );
+            if (hasLocal) {
+              const items = await Promise.all(
+                mapImages.map(async (m) => {
+                  const buffer = await this.readOrFetch(m.path);
+                  const isJpg =
+                    m.path.toLowerCase().endsWith('.jpg') ||
+                    m.path.toLowerCase().endsWith('.jpeg');
+                  return {
+                    content_type: isJpg ? 'image/jpeg' : 'image/png',
+                    data: buffer.toString('base64'),
+                  };
+                })
+              );
+              return {
+                source_type: 'multiple_image_base64',
+                items,
+              };
+            }
+            return {
+              source_type: 'multiple_image_urls',
+              items: mapImages.map((m) => ({
+                url: m.path,
+              })),
+            };
+          })(),
         }),
       })
     ).json();

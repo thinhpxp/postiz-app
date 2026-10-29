@@ -10,6 +10,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useDecisionModal } from '@gitroom/frontend/components/layout/new-modal';
 import { McpClientIcon } from '@gitroom/frontend/components/public-api/mcp.client.icons';
+import { AiAssistantSettingsCard } from '@gitroom/frontend/components/agents/ai.config.component';
 import clsx from 'clsx';
 
 // Remote clients can't set headers, they get a URL to paste (hint = where)
@@ -925,8 +926,23 @@ export const PublicComponent = () => {
   const t = useT();
 
   return (
-    <div className="flex flex-col gap-[20px]">
-      <h3 className="text-[20px]">{t('agents', 'Agents')}</h3>
+    <div className="flex flex-col gap-[30px] w-full text-textColor">
+      <div className="flex flex-col gap-[6px]">
+        <h2 className="text-[20px] font-semibold text-textColor">
+          {t('agents', 'Agents')}
+        </h2>
+        <p className="text-[13px] text-customColor18">
+          {t(
+            'agents_page_desc',
+            'Configure your AI Copilot assistant and connect AI agents or MCP clients to Postiz.'
+          )}
+        </p>
+      </div>
+
+      {/* AI Assistant / Copilot Provider Configuration */}
+      <AiAssistantSettingsCard />
+
+      {/* Postiz API Key & MCP Server / CLI for External Agents */}
       <PublicApiContent />
     </div>
   );

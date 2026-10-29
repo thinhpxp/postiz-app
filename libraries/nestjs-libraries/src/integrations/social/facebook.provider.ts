@@ -23,7 +23,6 @@ import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
-import FormDataUpload from 'form-data';
 
 export const META_GRAPH_API_VERSION = 'v25.0';
 
@@ -606,39 +605,54 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
           let photoId = '';
           try {
             const buffer = await this.readOrFetch(media.path);
-            const form = new FormDataUpload();
-            form.append('source', buffer, { filename: 'image.png' });
-            form.append('published', 'false');
+            const isJpg =
+              media.path.toLowerCase().endsWith('.jpg') ||
+              media.path.toLowerCase().endsWith('.jpeg');
+            const mime = isJpg ? 'image/jpeg' : 'image/png';
+            const fd = new FormData();
+            fd.append(
+              'source',
+              new Blob([buffer], { type: mime }),
+              `image.${isJpg ? 'jpg' : 'png'}`
+            );
+            fd.append('published', 'false');
             const res = await (
               await this.fetch(
                 `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${id}/photos?access_token=${accessToken}`,
                 {
                   method: 'POST',
-                  body: form as any,
-                  headers: form.getHeaders(),
+                  body: fd,
                 },
                 'upload photo story'
               )
             ).json();
             photoId = res.id;
-          } catch (e) {
-            const res = await (
-              await this.fetch(
-                `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${id}/photos?access_token=${accessToken}`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
+          } catch (e: any) {
+            if (
+              media.path.startsWith('http') &&
+              !media.path.includes('localhost') &&
+              !media.path.includes('127.0.0.1')
+            ) {
+              const res = await (
+                await this.fetch(
+                  `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${id}/photos?access_token=${accessToken}`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      url: media.path,
+                      published: false,
+                    }),
                   },
-                  body: JSON.stringify({
-                    url: media.path,
-                    published: false,
-                  }),
-                },
-                'upload photo story fallback'
-              )
-            ).json();
-            photoId = res.id;
+                  'upload photo story fallback'
+                )
+              ).json();
+              photoId = res.id;
+            } else {
+              throw e;
+            }
           }
 
           items.push({ kind: 'photo', mediaId: photoId });
@@ -891,39 +905,54 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
               let photoId = '';
               try {
                 const buffer = await this.readOrFetch(media.path);
-                const form = new FormDataUpload();
-                form.append('source', buffer, { filename: 'image.png' });
-                form.append('published', 'false');
+                const isJpg =
+                  media.path.toLowerCase().endsWith('.jpg') ||
+                  media.path.toLowerCase().endsWith('.jpeg');
+                const mime = isJpg ? 'image/jpeg' : 'image/png';
+                const fd = new FormData();
+                fd.append(
+                  'source',
+                  new Blob([buffer], { type: mime }),
+                  `image.${isJpg ? 'jpg' : 'png'}`
+                );
+                fd.append('published', 'false');
                 const res = await (
                   await this.fetch(
                     `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${id}/photos?access_token=${accessToken}`,
                     {
                       method: 'POST',
-                      body: form as any,
-                      headers: form.getHeaders(),
+                      body: fd,
                     },
                     'upload images slides'
                   )
                 ).json();
                 photoId = res.id;
-              } catch (e) {
-                const res = await (
-                  await this.fetch(
-                    `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${id}/photos?access_token=${accessToken}`,
-                    {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
+              } catch (e: any) {
+                if (
+                  media.path.startsWith('http') &&
+                  !media.path.includes('localhost') &&
+                  !media.path.includes('127.0.0.1')
+                ) {
+                  const res = await (
+                    await this.fetch(
+                      `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${id}/photos?access_token=${accessToken}`,
+                      {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          url: media.path,
+                          published: false,
+                        }),
                       },
-                      body: JSON.stringify({
-                        url: media.path,
-                        published: false,
-                      }),
-                    },
-                    'upload images slides fallback'
-                  )
-                ).json();
-                photoId = res.id;
+                      'upload images slides fallback'
+                    )
+                  ).json();
+                  photoId = res.id;
+                } else {
+                  throw e;
+                }
               }
 
               return { media_fbid: photoId };
@@ -1040,24 +1069,123 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     const [commentPost] = postDetails;
     const replyToId = lastCommentId || postId;
 
-    const data = await (
-      await this.fetch(
-        `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${replyToId}/comments?access_token=${accessToken}&fields=id,permalink_url`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+    let data: any;
+
+    if (commentPost.media?.length) {
+      const media = commentPost.media[0];
+      try {
+        const buffer = await this.readOrFetch(media.path);
+        const isJpg =
+          media.path.toLowerCase().endsWith('.jpg') ||
+          media.path.toLowerCase().endsWith('.jpeg');
+        const mime = isJpg ? 'image/jpeg' : 'image/png';
+        const fd = new FormData();
+        fd.append(
+          'source',
+          new Blob([buffer], { type: mime }),
+          `image.${isJpg ? 'jpg' : 'png'}`
+        );
+        if (commentPost.message) {
+          fd.append('message', commentPost.message);
+        }
+
+        data = await (
+          await this.fetch(
+            `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${replyToId}/comments?access_token=${accessToken}&fields=id,permalink_url`,
+            {
+              method: 'POST',
+              body: fd,
+            },
+            'add comment with source'
+          )
+        ).json();
+      } catch (err: any) {
+        // Fallback: upload photo as unpublished first and attach via attachment_id
+        try {
+          const buffer = await this.readOrFetch(media.path);
+          const isJpg =
+            media.path.toLowerCase().endsWith('.jpg') ||
+            media.path.toLowerCase().endsWith('.jpeg');
+          const mime = isJpg ? 'image/jpeg' : 'image/png';
+          const fd = new FormData();
+          fd.append(
+            'source',
+            new Blob([buffer], { type: mime }),
+            `image.${isJpg ? 'jpg' : 'png'}`
+          );
+          fd.append('published', 'false');
+
+          const photoRes = await (
+            await this.fetch(
+              `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${id}/photos?access_token=${accessToken}`,
+              {
+                method: 'POST',
+                body: fd,
+              },
+              'upload comment photo'
+            )
+          ).json();
+
+          data = await (
+            await this.fetch(
+              `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${replyToId}/comments?access_token=${accessToken}&fields=id,permalink_url`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  attachment_id: photoRes.id,
+                  message: commentPost.message,
+                }),
+              },
+              'add comment with attachment_id'
+            )
+          ).json();
+        } catch (uploadErr: any) {
+          if (
+            media.path.startsWith('http') &&
+            !media.path.includes('localhost') &&
+            !media.path.includes('127.0.0.1')
+          ) {
+            data = await (
+              await this.fetch(
+                `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${replyToId}/comments?access_token=${accessToken}&fields=id,permalink_url`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    attachment_url: media.path,
+                    message: commentPost.message,
+                  }),
+                },
+                'add comment fallback url'
+              )
+            ).json();
+          } else {
+            throw uploadErr || err;
+          }
+        }
+      }
+    } else {
+      data = await (
+        await this.fetch(
+          `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${replyToId}/comments?access_token=${accessToken}&fields=id,permalink_url`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: commentPost.message,
+            }),
           },
-          body: JSON.stringify({
-            ...(commentPost.media?.length
-              ? { attachment_url: commentPost.media[0].path }
-              : {}),
-            message: commentPost.message,
-          }),
-        },
-        'add comment'
-      )
-    ).json();
+          'add comment'
+        )
+      ).json();
+    }
 
     return [
       {

@@ -13,6 +13,10 @@ import { Integration } from '@prisma/client';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { SkoolDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/skool.dto';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
+import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
+import { Readable } from 'stream';
+import { lookup } from 'mime-types';
 
 export class SkoolProvider extends SocialAbstract implements SocialProvider {
   identifier = 'skool';
@@ -207,29 +211,44 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
     const fileIds: string[] = [];
 
     for (const item of media) {
-      // Size and type come from a HEAD request; the PUT below streams the
-      // bytes so the file is never buffered in memory.
-      const headResponse = await fetch(item.path, {
-        method: 'HEAD',
-        // identity encoding so content-length matches the bytes the GET streams
-        headers: { 'accept-encoding': 'identity' },
-        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-        dispatcher: getSsrfSafeDispatcher(),
-      });
-      const contentType =
-        headResponse.headers.get('content-type') || 'application/octet-stream';
-      const contentLength = Number(
-        headResponse.headers.get('content-length') || 0
-      );
-      if (!headResponse.ok || !contentLength) {
-        // A permanent condition - fail fast instead of letting Temporal retry
-        throw new BadBody(
-          this.identifier,
-          '{}',
-          '{}',
-          'Could not determine the media size for upload'
+      let contentLength: number;
+      let contentType = 'application/octet-stream';
+      let streamBody: any;
+
+      const local = this.tryResolveLocalUploadPath(item.path);
+      if (local) {
+        contentLength = (await stat(local)).size;
+        contentType = lookup(local) || 'application/octet-stream';
+        streamBody = Readable.toWeb(createReadStream(local));
+      } else {
+        const headResponse = await fetch(item.path, {
+          method: 'HEAD',
+          headers: { 'accept-encoding': 'identity' },
+          dispatcher: getSsrfSafeDispatcher(),
+        } as any);
+        contentType =
+          headResponse.headers.get('content-type') || 'application/octet-stream';
+        contentLength = Number(
+          headResponse.headers.get('content-length') || 0
         );
+        if (!headResponse.ok || !contentLength) {
+          throw new BadBody(
+            this.identifier,
+            '{}',
+            '{}',
+            'Could not determine the media size for upload'
+          );
+        }
+        const fileResponse = await fetch(item.path, {
+          headers: { 'accept-encoding': 'identity' },
+          dispatcher: getSsrfSafeDispatcher(),
+        } as any);
+        if (!fileResponse.ok || !fileResponse.body) {
+          throw new Error(`Failed to fetch media: ${fileResponse.statusText}`);
+        }
+        streamBody = fileResponse.body;
       }
+
       const fileName = item.path.split('/').pop() || 'file';
 
       const createFileResponse = await (
@@ -251,14 +270,6 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
         }, 'create file record')
       ).json();
 
-      const fileResponse = await fetch(item.path, {
-        headers: { 'accept-encoding': 'identity' },
-        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-        dispatcher: getSsrfSafeDispatcher(),
-      });
-      if (!fileResponse.ok || !fileResponse.body) {
-        throw new Error(`Failed to fetch media: ${fileResponse.statusText}`);
-      }
       const uploadResponse = await fetch(createFileResponse.write_url, {
         method: 'PUT',
         headers: {
@@ -266,7 +277,7 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
           'Content-Length': String(contentLength),
           'x-amz-acl': createFileResponse.acl,
         },
-        body: fileResponse.body,
+        body: streamBody,
         // Required by undici when streaming a request body.
         duplex: 'half',
       } as any);

@@ -179,9 +179,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         ).json();
         this.checkApiError(all);
 
-        const { data } = await this.getSsrfSafeAxios().get(media.path!, {
-          responseType: 'stream',
-        });
+        const data = await this.mediaStream(media.path!, this.identifier);
 
         const slash = media.path.split('/').at(-1);
 

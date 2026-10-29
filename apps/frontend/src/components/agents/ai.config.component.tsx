@@ -1,6 +1,7 @@
 'use client';
 
-import React, { FC, useState, useCallback, useMemo } from 'react';
+import React, { FC, useState, useCallback, useMemo, useEffect } from 'react';
+import useSWR from 'swr';
 import clsx from 'clsx';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useToaster } from '@gitroom/react/toaster/toaster';
@@ -720,3 +721,446 @@ export const AiConfigModal: FC<{
     </div>
   );
 };
+
+export const AiAssistantSettingsCard: FC = () => {
+  const t = useT();
+  const fetch = useFetch();
+  const toaster = useToaster();
+
+  const {
+    data: config,
+    mutate,
+    isLoading,
+  } = useSWR<AiConfigData>('/copilot/config', async () => {
+    const res = await fetch('/copilot/config');
+    return res.json();
+  });
+
+  const [activePreset, setActivePreset] = useState<string>('openai');
+  const [apiKey, setApiKey] = useState('');
+  const [model, setModel] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (config) {
+      setModel(config.model || 'gpt-4.1');
+      setBaseUrl(config.baseUrl || '');
+      setApiKey('');
+    }
+  }, [config]);
+
+  const selectPreset = useCallback((preset: Preset) => {
+    setActivePreset(preset.id);
+    setModel(preset.model);
+    setBaseUrl(preset.baseUrl);
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!config?.isConfigured && !apiKey.trim()) {
+      toaster.show(
+        t('ai_api_key_required', 'Vui lòng nhập API Key để kích hoạt AI'),
+        'warning'
+      );
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const payload: { apiKey?: string; model?: string; baseUrl?: string } = {
+        model: model.trim() || 'gpt-4.1',
+        baseUrl: baseUrl.trim() || '',
+      };
+      if (apiKey.trim()) {
+        payload.apiKey = apiKey.trim();
+      }
+
+      const res = await fetch('/copilot/config', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.message || 'Không thể lưu cấu hình AI');
+      }
+
+      await mutate();
+      setApiKey('');
+      toaster.show(
+        t('ai_saved_success', 'Đã lưu và kích hoạt trợ lý AI thành công!'),
+        'success'
+      );
+    } catch (err: any) {
+      toaster.show(
+        err?.message || t('ai_save_failed', 'Lỗi khi lưu cấu hình AI'),
+        'warning'
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (
+      !confirm(
+        t(
+          'ai_delete_confirm',
+          'Bạn có chắc chắn muốn gỡ cấu hình AI? Trợ lý AI sẽ ngừng hoạt động cho đến khi được cấu hình lại.'
+        )
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      const res = await fetch('/copilot/config', {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        throw new Error('Không thể gỡ cấu hình AI');
+      }
+
+      await mutate();
+      setApiKey('');
+      toaster.show(t('ai_deleted_success', 'Đã gỡ cấu hình AI!'), 'success');
+    } catch (err: any) {
+      toaster.show(err?.message || 'Lỗi khi gỡ cấu hình', 'warning');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const currentPreset = useMemo(
+    () => PRESETS.find((p) => p.id === activePreset) || PRESETS[0],
+    [activePreset]
+  );
+
+  return (
+    <div className="bg-newBgColorInnerInner rounded-[12px] border border-newBorder overflow-hidden">
+      {/* Header Bar */}
+      <div className="bg-newBgColorInner px-[20px] mobile:px-[14px] py-[14px] border-b border-newBorder flex items-start justify-between gap-[12px] mobile:flex-col">
+        <div className="flex items-start gap-[12px]">
+          <div className="w-[38px] h-[38px] rounded-[10px] bg-gradient-to-tr from-[#612BD3] to-[#8E51FF] text-white flex items-center justify-center shrink-0 shadow-sm mt-[2px]">
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+          </div>
+          <div>
+            <div className="text-[15px] font-[600] flex items-center gap-[8px]">
+              <span>
+                {t('ai_assistant_setup_title', 'Cấu hình Trợ lý AI (Postiz Copilot)')}
+              </span>
+              {config?.isConfigured ? (
+                <span className="inline-flex items-center gap-[5px] px-[8px] py-[2px] rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  <span className="w-[6px] h-[6px] rounded-full bg-emerald-500 inline-block animate-pulse" />
+                  {t('ai_active', 'Đang hoạt động')}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-[5px] px-[8px] py-[2px] rounded-full text-[11px] font-medium bg-btnSimple text-customColor18 border border-newBorder">
+                  <span className="w-[6px] h-[6px] rounded-full bg-customColor18 inline-block" />
+                  {t('not_configured', 'Chưa cấu hình')}
+                </span>
+              )}
+            </div>
+            <div className="text-[13px] text-customColor18 mt-[2px]">
+              {t(
+                'ai_assistant_setup_desc',
+                'Khai báo API Key của OpenAI hoặc nhà cung cấp AI tương thích ngay tại đây mà không cần sửa tệp cấu hình máy chủ.'
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-[10px] shrink-0 pt-[2px]">
+          {currentPreset.docUrl && (
+            <a
+              href={currentPreset.docUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12px] text-[#612BD3] dark:text-customColor11 hover:underline flex items-center gap-[4px] font-medium"
+            >
+              <span>{t('get_api_key_link', 'Lấy API Key')}</span>
+              <span>↗</span>
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Card Body */}
+      <div className="p-[20px] mobile:p-[14px]">
+        {isLoading ? (
+          <div className="flex items-center justify-center p-[30px] text-customColor18 text-[13px]">
+            {t('loading', 'Đang tải...')}
+          </div>
+        ) : !config?.isAdmin ? (
+          <div className="p-[16px] rounded-[8px] bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[13px] flex items-center gap-[10px]">
+            <svg
+              className="w-5 h-5 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <span>
+              {t(
+                'ai_assistant_admin_only',
+                'Chỉ Quản trị viên (Admin) mới có quyền thiết lập cấu hình AI.'
+              )}
+            </span>
+          </div>
+        ) : (
+          <form onSubmit={handleSave} className="flex flex-col gap-[18px]">
+            {/* Preset Selector */}
+            <div className="flex flex-col gap-[8px]">
+              <label className="text-[12px] font-[600] uppercase tracking-wider text-customColor18">
+                {t('ai_provider_preset', 'Chọn nhà cung cấp AI')}
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-[8px]">
+                {PRESETS.map((preset) => (
+                  <button
+                    type="button"
+                    key={preset.id}
+                    onClick={() => selectPreset(preset)}
+                    className={clsx(
+                      'px-[12px] py-[8px] rounded-[8px] text-[12px] font-medium border text-center transition-all cursor-pointer',
+                      activePreset === preset.id
+                        ? 'bg-[#612BD3]/10 border-[#612BD3] text-[#612BD3] dark:text-[#a580ff] font-semibold shadow-sm'
+                        : 'bg-newBgColorInner border-newBorder text-textColor hover:bg-boxHover'
+                    )}
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* API Key Field */}
+            <div className="flex flex-col gap-[6px]">
+              <div className="flex items-center justify-between">
+                <label className="text-[12px] font-[600] uppercase tracking-wider text-customColor18">
+                  {t('api_key_label', 'API Key')}{' '}
+                  {!config?.isConfigured && <span className="text-red-500">*</span>}
+                </label>
+                {config?.maskedKey && (
+                  <span className="text-[11px] font-mono text-textColor/70 flex items-center gap-[6px] bg-newBgColorInner px-[8px] py-[2px] rounded border border-newBorder">
+                    <span>{t('current_key', 'Khóa hiện tại')}:</span>
+                    <span className="font-bold text-[#612BD3] dark:text-[#a580ff]">
+                      {config.maskedKey}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={
+                    config?.isConfigured
+                      ? t(
+                          'api_key_edit_placeholder',
+                          'Nhập khóa mới nếu muốn thay đổi (bỏ trống để giữ khóa cũ)'
+                        )
+                      : currentPreset.placeholderKey
+                  }
+                  className="w-full bg-newBgColorInner border border-newBorder rounded-[8px] px-[14px] py-[8px] text-[13px] text-textColor placeholder:text-customColor18 focus:outline-none focus:border-[#612BD3] pr-[40px] font-mono transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-[10px] text-customColor18 hover:text-textColor p-[4px] cursor-pointer"
+                  aria-label="Toggle password visibility"
+                >
+                  {showKey ? (
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <span className="text-[11px] text-customColor18">
+                {t(
+                  'api_key_stored_securely',
+                  'Khóa API được mã hóa an toàn trong cơ sở dữ liệu và chỉ kích hoạt tại máy chủ của bạn.'
+                )}
+              </span>
+            </div>
+
+            {/* Model Name Field */}
+            <div className="flex flex-col gap-[6px]">
+              <label className="text-[12px] font-[600] uppercase tracking-wider text-customColor18">
+                {t('model_label', 'Mô hình AI (Model)')}
+              </label>
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="gpt-4.1"
+                className="w-full bg-newBgColorInner border border-newBorder rounded-[8px] px-[14px] py-[8px] text-[13px] text-textColor placeholder:text-customColor18 focus:outline-none focus:border-[#612BD3] font-mono transition-colors"
+              />
+              <div className="flex flex-wrap gap-[6px] pt-[2px]">
+                {QUICK_MODELS.map((m) => (
+                  <button
+                    type="button"
+                    key={m}
+                    onClick={() => setModel(m)}
+                    className={clsx(
+                      'text-[11px] px-[10px] py-[3px] rounded-full border transition-all font-mono cursor-pointer',
+                      model === m
+                        ? 'bg-[#612BD3] text-white border-[#612BD3]'
+                        : 'bg-newBgColorInner border-newBorder text-customColor18 hover:text-textColor hover:bg-boxHover'
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Base URL Field */}
+            <div className="flex flex-col gap-[6px]">
+              <label className="text-[12px] font-[600] uppercase tracking-wider text-customColor18">
+                {t('base_url_label', 'API Base URL (Tùy chọn)')}
+              </label>
+              <input
+                type="text"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://api.openai.com/v1 (để trống nếu dùng OpenAI mặc định)"
+                className="w-full bg-newBgColorInner border border-newBorder rounded-[8px] px-[14px] py-[8px] text-[13px] text-textColor placeholder:text-customColor18 focus:outline-none focus:border-[#612BD3] font-mono transition-colors"
+              />
+              <span className="text-[11px] text-customColor18">
+                {t(
+                  'base_url_desc',
+                  'Hỗ trợ OpenRouter, DeepSeek, Ollama, vLLM hoặc Reverse Proxy tương thích với chuẩn OpenAI.'
+                )}
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-[6px] border-t border-newBorder flex items-center justify-between gap-[12px] flex-wrap">
+              {config?.isConfigured ? (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="px-[16px] h-[36px] bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 transition-colors rounded-[8px] text-[13px] font-[600] flex items-center gap-[6px] cursor-pointer disabled:opacity-50"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  <span>
+                    {isDeleting
+                      ? t('deleting', 'Đang gỡ...')
+                      : t('remove_ai_config', 'Gỡ cấu hình AI')}
+                  </span>
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex items-center gap-[10px]">
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-[18px] h-[36px] bg-[#612BD3] hover:bg-[#5520CB] text-white transition-colors rounded-[8px] text-[13px] font-[600] flex items-center gap-[6px] cursor-pointer disabled:opacity-50 shadow-sm"
+                >
+                  {isSaving ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>{t('saving', 'Đang lưu...')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                      <span>
+                        {config?.isConfigured
+                          ? t('save_changes', 'Lưu thay đổi')
+                          : t('save_and_activate_ai', 'Lưu & Kích hoạt Trợ lý AI')}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+

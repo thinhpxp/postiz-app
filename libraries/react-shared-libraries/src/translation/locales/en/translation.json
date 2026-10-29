@@ -1002,6 +1002,7 @@
   "ai_delete_confirm": "Are you sure you want to remove the AI configuration? The AI assistant will stop working until reconfigured.",
   "ai_deleted_success": "AI configuration removed!",
   "error_posts": "Failed",
-  "no_error_posts": "No failed posts"
+  "no_error_posts": "No failed posts",
+  "agents_page_desc": "Configure your AI Copilot assistant and connect AI agents or MCP clients to Postiz."
 }
 

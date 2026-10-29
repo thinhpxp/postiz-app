@@ -22,7 +22,7 @@ import { useUser } from '@gitroom/frontend/components/layout/user.context';
 import { LogoutComponent } from '@gitroom/frontend/components/layout/logout.component';
 import { useSearchParams } from 'next/navigation';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
-import { PublicComponent } from '@gitroom/frontend/components/public-api/public.component';
+import { PublicComponent, isSelfHosted } from '@gitroom/frontend/components/public-api/public.component';
 import Link from 'next/link';
 import { Webhooks } from '@gitroom/frontend/components/webhooks/webhooks';
 import { Sets } from '@gitroom/frontend/components/sets/sets';
@@ -89,8 +89,15 @@ export const SettingsPopup: FC<{
     const arr = [];
     arr.push({ tab: 'global_settings', label: t('global_settings', 'Global Settings') });
     // Populate tabs based on user permissions
-    if (user?.tier?.public_api && isGeneral && showLogout) {
-      arr.push({ tab: 'agents', label: t('agents_dev', 'Agents / Dev') });
+    if (
+      (user?.tier?.public_api ||
+        isSelfHosted ||
+        user?.role === 'ADMIN' ||
+        !process.env.NEXT_PUBLIC_BILLING_ENABLED) &&
+      isGeneral &&
+      showLogout
+    ) {
+      arr.push({ tab: 'agents', label: t('agents_dev', 'Agents') });
     }
     if (user?.tier?.team_members && isGeneral && user?.role !== 'USER') {
       arr.push({ tab: 'teams', label: t('teams', 'Teams') });
@@ -228,7 +235,10 @@ export const SettingsPopup: FC<{
               )}
 
               {tab === 'agents' &&
-                !!user?.tier?.public_api &&
+                (!!user?.tier?.public_api ||
+                  isSelfHosted ||
+                  user?.role === 'ADMIN' ||
+                  !process.env.NEXT_PUBLIC_BILLING_ENABLED) &&
                 isGeneral &&
                 showLogout && (
                   <div>

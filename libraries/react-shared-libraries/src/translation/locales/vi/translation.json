@@ -778,9 +778,9 @@
   "connector_self_hosted_description": "Trình kết nối chính thức cũng hoạt động với Postiz tự lưu trữ. Khi được yêu cầu đăng nhập, hãy chọn \"Use self-hosted\" và nhập {{url}} cùng khóa API của bạn.",
   "mcp_onboarding_description": "Cung cấp cho Agent của bạn các công cụ của Postiz để tạo, lên lịch và quản lý bài đăng",
   "cli_onboarding_description": "Cài đặt Postiz CLI và kỹ năng hướng dẫn Agent của bạn cách sử dụng nó",
-  "agent_settings_later": "Nhiều đại lý hơn và hướng dẫn đầy đủ có tại Cài đặt > Đại lý / Dev",
-  "agents": "Agent",
-  "agents_dev": "Đại lý / Dev",
+  "agent_settings_later": "Xem thêm hướng dẫn kết nối tại Cài đặt > Agents",
+  "agents": "Agents",
+  "agents_dev": "Agents",
   "watch_tutorial": "Xem hướng dẫn",
   "watch_tutorial_title": "Tìm hiểu cách sử dụng Postiz",
   "watch_tutorial_description": "Xem video ngắn này để biết cách tận dụng tối đa Postiz",
@@ -1000,6 +1000,7 @@
   "ai_delete_confirm": "Bạn có chắc chắn muốn gỡ cấu hình AI? Trợ lý AI sẽ ngừng hoạt động cho đến khi được cấu hình lại.",
   "ai_deleted_success": "Đã gỡ cấu hình AI!",
   "error_posts": "Thất bại",
-  "no_error_posts": "Không có bài đăng nào bị lỗi"
+  "no_error_posts": "Không có bài đăng nào bị lỗi",
+  "agents_page_desc": "Cấu hình Trợ lý AI Copilot và kết nối các ứng dụng Agent hoặc MCP Client với Postiz."
 }
 

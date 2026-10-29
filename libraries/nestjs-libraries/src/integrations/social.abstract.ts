@@ -11,7 +11,7 @@ import {
   getSsrfSafeDispatcher,
 } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import sharp from 'sharp';
-import { createReadStream, readFileSync, statSync } from 'fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'fs';
 import { resolve, sep } from 'path';
 import { Readable } from 'stream';
 import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
@@ -272,10 +272,64 @@ export abstract class SocialAbstract {
     return { width, height };
   }
 
+  // Resolves media stored locally on disk even when referenced by an HTTP URL
+  // (e.g. self-hosted uploads like http://localhost:4007/uploads/... or http://127.0.0.1:4007/uploads/...)
+  protected tryResolveLocalUploadPath(path: string): string | null {
+    if (!path || typeof path !== 'string' || !process.env.UPLOAD_DIRECTORY) {
+      return null;
+    }
+    const base = resolve(process.env.UPLOAD_DIRECTORY);
+
+    // 1. Direct path on disk or relative to UPLOAD_DIRECTORY
+    if (path.indexOf('http') !== 0) {
+      const direct = resolve(path);
+      if (direct.startsWith(base + sep) && existsSync(direct)) {
+        return direct;
+      }
+      const stripped = path.replace(/^\/?(uploads\/)?/, '');
+      const sub = resolve(base, stripped);
+      if (sub.startsWith(base + sep) && existsSync(sub)) {
+        return sub;
+      }
+      return null;
+    }
+
+    // 2. HTTP/HTTPS URL pointing to local uploads (e.g. http://localhost:4007/uploads/...)
+    try {
+      const url = new URL(path);
+      const pathname = url.pathname;
+      const uploadsMarker = '/uploads/';
+      const idx = pathname.indexOf(uploadsMarker);
+      if (idx !== -1) {
+        const subPath = pathname.substring(idx + uploadsMarker.length);
+        const candidate = resolve(base, subPath);
+        if (candidate.startsWith(base + sep) && existsSync(candidate)) {
+          return candidate;
+        }
+      }
+      const apiUploadsMarker = '/api/uploads/';
+      const apiIdx = pathname.indexOf(apiUploadsMarker);
+      if (apiIdx !== -1) {
+        const subPath = pathname.substring(apiIdx + apiUploadsMarker.length);
+        const candidate = resolve(base, subPath);
+        if (candidate.startsWith(base + sep) && existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    } catch {}
+
+    return null;
+  }
+
   // Reads the whole media into memory: used for images, which the providers
   // hand straight to sharp. Lives here rather than in a helper so it can
   // classify a stall like the ranged reads below do.
   protected async readOrFetch(path: string, retried = false): Promise<Buffer> {
+    const local = this.tryResolveLocalUploadPath(path);
+    if (local) {
+      return readFileSync(local);
+    }
+
     if (path.indexOf('http') !== 0) {
       return readFileSync(this.localMediaPath(path));
     }
@@ -317,6 +371,11 @@ export abstract class SocialAbstract {
   // Resolves the total byte size of the media without loading it into memory:
   // a HEAD request for remote URLs, statSync for local files.
   protected async mediaSize(path: string, identifier = ''): Promise<number> {
+    const local = this.tryResolveLocalUploadPath(path);
+    if (local) {
+      return statSync(local).size;
+    }
+
     if (path.indexOf('http') === 0) {
       // the media path is user-influenced, keep the SSRF-safe dispatcher that
       // this.fetch applies to every other outbound request. identity encoding
@@ -350,6 +409,11 @@ export abstract class SocialAbstract {
   // opened: resolve() collapses any `..` segments before the comparison, the
   // same check the frontend /api/uploads route makes.
   protected localMediaPath(path: string, identifier = '') {
+    const local = this.tryResolveLocalUploadPath(path);
+    if (local) {
+      return local;
+    }
+
     const base = process.env.UPLOAD_DIRECTORY
       ? resolve(process.env.UPLOAD_DIRECTORY)
       : '';
@@ -376,6 +440,17 @@ export abstract class SocialAbstract {
     identifier = '',
     retried = false
   ): Promise<Buffer> {
+    const local = this.tryResolveLocalUploadPath(path);
+    if (local) {
+      return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        createReadStream(local, { start, end })
+          .on('data', (chunk) => chunks.push(chunk as Buffer))
+          .on('end', () => resolve(Buffer.concat(chunks)))
+          .on('error', reject);
+      });
+    }
+
     if (path.indexOf('http') === 0) {
       setHeartbeatDetails(
         `media chunk ${start}-${end} ${stripQuery(path)}`
@@ -448,6 +523,11 @@ export abstract class SocialAbstract {
     path: string,
     identifier = ''
   ): Promise<Readable> {
+    const local = this.tryResolveLocalUploadPath(path);
+    if (local) {
+      return createReadStream(local);
+    }
+
     if (path.indexOf('http') !== 0) {
       return createReadStream(this.localMediaPath(path, identifier));
     }

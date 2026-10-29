@@ -36,13 +36,43 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 
+import { existsSync, statSync, readFileSync, createReadStream } from 'fs';
+import { join } from 'path';
+import { Readable } from 'stream';
+
+function tryResolveLocalPath(filePathOrUrl: string): string | null {
+  const uploadDir = process.env.UPLOAD_DIRECTORY || '/uploads';
+  if (!filePathOrUrl) return null;
+  if (
+    !filePathOrUrl.startsWith('http://') &&
+    !filePathOrUrl.startsWith('https://')
+  ) {
+    const candidate = filePathOrUrl.startsWith(uploadDir)
+      ? filePathOrUrl
+      : join(uploadDir, filePathOrUrl);
+    if (existsSync(candidate)) return candidate;
+  }
+  const idx = filePathOrUrl.indexOf('/uploads/');
+  if (idx !== -1) {
+    const rel = filePathOrUrl.substring(idx + '/uploads/'.length);
+    const candidate = join(uploadDir, rel);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 async function reduceImageBySize(url: string, maxSizeKB = 976) {
   try {
-    // Fetch the image from the URL
-    const response = await getSsrfSafeAxios().get(url, {
-      responseType: 'arraybuffer',
-    });
-    let imageBuffer = Buffer.from(response.data);
+    let imageBuffer: Buffer;
+    const local = tryResolveLocalPath(url);
+    if (local) {
+      imageBuffer = readFileSync(local);
+    } else {
+      const response = await getSsrfSafeAxios().get(url, {
+        responseType: 'arraybuffer',
+      });
+      imageBuffer = Buffer.from(response.data);
+    }
 
     // Use sharp to get the metadata of the image
     const metadata = await sharp(imageBuffer).metadata();
@@ -85,34 +115,44 @@ async function startVideoUpload(
     exp: Date.now() / 1000 + 60 * 30, // 30 minutes
   });
 
-  // The video is never buffered in memory: the size comes from a HEAD request
-  // and the bytes are streamed straight from the source into the upload.
-  setHeartbeatDetails('bluesky: video size');
-  const headResponse = await fetch(videoPath, {
-    method: 'HEAD',
-    // identity encoding so content-length matches the bytes the GET streams
-    headers: { 'accept-encoding': 'identity' },
-    // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-    dispatcher: getSsrfSafeDispatcher(),
-  });
-  const videoSize = Number(headResponse.headers.get('content-length') || 0);
-  if (!headResponse.ok || !videoSize) {
-    throw new BadBody(
-      'bluesky',
-      '{}',
-      {} as any,
-      'Could not determine the video size for Bluesky upload'
-    );
-  }
+  const localVideo = tryResolveLocalPath(videoPath);
+  let videoSize: number;
+  let videoBody: any;
 
-  setHeartbeatDetails('bluesky: read video');
-  const videoResponse = await fetch(videoPath, {
-    headers: { 'accept-encoding': 'identity' },
-    // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-    dispatcher: getSsrfSafeDispatcher(),
-  });
-  if (!videoResponse.ok || !videoResponse.body) {
-    throw new Error(`Failed to fetch video: ${videoResponse.statusText}`);
+  if (localVideo) {
+    videoSize = statSync(localVideo).size;
+    videoBody = Readable.toWeb(createReadStream(localVideo));
+  } else {
+    // The video is never buffered in memory: the size comes from a HEAD request
+    // and the bytes are streamed straight from the source into the upload.
+    setHeartbeatDetails('bluesky: video size');
+    const headResponse = await fetch(videoPath, {
+      method: 'HEAD',
+      // identity encoding so content-length matches the bytes the GET streams
+      headers: { 'accept-encoding': 'identity' },
+      // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+      dispatcher: getSsrfSafeDispatcher(),
+    });
+    videoSize = Number(headResponse.headers.get('content-length') || 0);
+    if (!headResponse.ok || !videoSize) {
+      throw new BadBody(
+        'bluesky',
+        '{}',
+        {} as any,
+        'Could not determine the video size for Bluesky upload'
+      );
+    }
+
+    setHeartbeatDetails('bluesky: read video');
+    const videoResponse = await fetch(videoPath, {
+      headers: { 'accept-encoding': 'identity' },
+      // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+      dispatcher: getSsrfSafeDispatcher(),
+    });
+    if (!videoResponse.ok || !videoResponse.body) {
+      throw new Error(`Failed to fetch video: ${videoResponse.statusText}`);
+    }
+    videoBody = videoResponse.body;
   }
 
   console.log('Uploading video', videoPath, videoSize);
@@ -131,7 +171,7 @@ async function startVideoUpload(
       'Content-Type': 'video/mp4',
       'Content-Length': videoSize.toString(),
     },
-    body: videoResponse.body,
+    body: videoBody,
     // Required by undici when streaming a request body.
     duplex: 'half',
   } as any);

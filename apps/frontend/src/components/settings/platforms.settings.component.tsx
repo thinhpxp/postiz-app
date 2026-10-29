@@ -55,20 +55,22 @@ export const PlatformsSettingsComponent: FC = () => {
     loadPlatforms
   );
 
-  const [activeTab, setActiveTab] = useState<'all' | 'social' | 'community' | 'ai'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'social' | 'community'>('all');
   const [search, setSearch] = useState('');
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
 
   const filteredPlatforms = useMemo(() => {
     if (!platforms || !Array.isArray(platforms)) return [];
-    return platforms.filter((p) => {
-      const matchCat = activeTab === 'all' || p.category === activeTab;
-      const matchSearch =
-        !search ||
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.id.toLowerCase().includes(search.toLowerCase());
-      return matchCat && matchSearch;
-    });
+    return platforms
+      .filter((p) => p.category !== 'ai' && p.id !== 'openai')
+      .filter((p) => {
+        const matchCat = activeTab === 'all' || p.category === activeTab;
+        const matchSearch =
+          !search ||
+          p.name.toLowerCase().includes(search.toLowerCase()) ||
+          p.id.toLowerCase().includes(search.toLowerCase());
+        return matchCat && matchSearch;
+      });
   }, [platforms, activeTab, search]);
 
   const toggleExpand = (id: string) => {
@@ -96,7 +98,7 @@ export const PlatformsSettingsComponent: FC = () => {
       {/* Filter Tabs and Search Bar */}
       <div className="flex flex-wrap items-center justify-between gap-[12px] bg-sixth/60 p-[12px] rounded-[10px] border border-newTableBorder">
         <div className="flex flex-wrap gap-[6px]">
-          {(['all', 'social', 'community', 'ai'] as const).map((cat) => (
+          {(['all', 'social', 'community'] as const).map((cat) => (
             <button
               key={cat}
               type="button"
@@ -112,9 +114,7 @@ export const PlatformsSettingsComponent: FC = () => {
                 ? t('all_platforms', 'All Platforms')
                 : cat === 'social'
                 ? t('social_networks', 'Social Media')
-                : cat === 'community'
-                ? t('community', 'Community')
-                : t('ai_tools', 'AI & Tools')}
+                : t('community', 'Community')}
             </button>
           ))}
         </div>
