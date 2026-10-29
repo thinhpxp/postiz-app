@@ -123,4 +123,16 @@ export class NotificationsRepository {
       }),
     };
   }
+
+  async deleteOldNotifications(days = 15) {
+    const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    return this._notifications.model.notifications.deleteMany({
+      where: {
+        createdAt: {
+          lt: cutoffDate,
+        },
+      },
+    });
+  }
 }
+

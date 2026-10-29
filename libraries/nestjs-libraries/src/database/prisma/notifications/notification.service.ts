@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { NotificationsRepository } from '@gitroom/nestjs-libraries/database/prisma/notifications/notifications.repository';
 import { EmailService } from '@gitroom/nestjs-libraries/services/email.service';
 import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.repository';
@@ -9,13 +9,47 @@ import { organizationId } from '@gitroom/nestjs-libraries/temporal/temporal.sear
 export type NotificationType = 'success' | 'fail' | 'info';
 
 @Injectable()
-export class NotificationService {
+export class NotificationService implements OnApplicationBootstrap {
+  private readonly _logger = new Logger(NotificationService.name);
+
   constructor(
     private _notificationRepository: NotificationsRepository,
     private _emailService: EmailService,
     private _organizationRepository: OrganizationRepository,
     private _temporalService: TemporalService
   ) {}
+
+  onApplicationBootstrap() {
+    const retentionDays = Number(process.env.NOTIFICATIONS_RETENTION_DAYS || 15);
+    // Run initial cleanup on startup after 15 seconds to allow DB connection to stabilize
+    setTimeout(() => {
+      this.cleanupOldNotifications(retentionDays).catch((err) => {
+        this._logger.error('Failed to run initial notification cleanup:', err);
+      });
+    }, 15000);
+
+    // Schedule cleanup periodically every 24 hours
+    setInterval(() => {
+      this.cleanupOldNotifications(retentionDays).catch((err) => {
+        this._logger.error('Failed to run periodic notification cleanup:', err);
+      });
+    }, 24 * 60 * 60 * 1000);
+  }
+
+  async cleanupOldNotifications(days = 15) {
+    try {
+      const result = await this._notificationRepository.deleteOldNotifications(days);
+      if (result && result.count > 0) {
+        this._logger.log(
+          `[NotificationCleanup] Deleted ${result.count} notifications older than ${days} days.`
+        );
+      }
+      return result;
+    } catch (err) {
+      this._logger.error('[NotificationCleanup] Error during cleanup:', err);
+      throw err;
+    }
+  }
 
   getMainPageCount(organizationId: string, userId: string) {
     return this._notificationRepository.getMainPageCount(
