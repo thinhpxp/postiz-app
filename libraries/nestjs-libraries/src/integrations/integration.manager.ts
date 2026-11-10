@@ -38,6 +38,7 @@ import { SkoolProvider } from '@gitroom/nestjs-libraries/integrations/social/sko
 import { WhopProvider } from '@gitroom/nestjs-libraries/integrations/social/whop.provider';
 import { MeweProvider } from '@gitroom/nestjs-libraries/integrations/social/mewe.provider';
 import { TumblrProvider } from '@gitroom/nestjs-libraries/integrations/social/tumblr.provider';
+import { FacebookPersonalProvider } from '@gitroom/nestjs-libraries/integrations/social/facebook.personal.provider';
 
 export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new XProvider(),
@@ -47,6 +48,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new InstagramProvider(),
   new InstagramStandaloneProvider(),
   new FacebookProvider(),
+  new FacebookPersonalProvider(),
   new ThreadsProvider(),
   new YoutubeProvider(),
   new GmbProvider(),

@@ -1,0 +1,248 @@
+import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  AuthTokenDetails,
+  PostDetails,
+  PostResponse,
+  SocialProvider,
+} from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
+import { Integration } from '@prisma/client';
+import { FacebookPersonalDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/facebook.personal.dto';
+import { FacebookAdapter } from './browser-bot/facebook.adapter';
+
+export class FacebookPersonalProvider
+  extends SocialAbstract
+  implements SocialProvider
+{
+  identifier = 'facebook-personal';
+  name = 'Facebook (Profile & Groups)';
+  isBetweenSteps = true; // Cho phép người dùng chọn Profile hoặc các Groups sau khi nạp cookie
+  scopes = [];
+  editor = 'normal' as const;
+  dto = FacebookPersonalDto;
+  override maxConcurrentJob = 2; // Giới hạn số lượng tác vụ đồng thời để bảo vệ tài khoản
+
+  maxLength() {
+    return 63206;
+  }
+
+  /**
+   * Stub cho giao diện SocialProvider (FacebookPersonal dùng direct customFields modal, không dùng OAuth redirect)
+   */
+  async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {
+    return {
+      refreshToken: '',
+      expiresIn: 0,
+      accessToken: refreshToken,
+      id: '',
+      name: '',
+      picture: '',
+      username: '',
+    };
+  }
+
+  async generateAuthUrl() {
+    return {
+      url: '',
+      codeVerifier: '',
+      state: '',
+    };
+  }
+
+  /**
+   * Cấu hình các trường nhập dữ liệu trên giao diện Postiz khi người dùng bấm Add Channel
+   */
+  async customFields() {
+    return [
+      {
+        key: 'cookies',
+        label: 'Facebook Cookies (JSON hoặc chuỗi Header c_user, xs, datr, sb)',
+        validation: `/^.{10,}$/`,
+        type: 'password' as const,
+        description:
+          'Dán chuỗi cookies lấy từ tiện ích Cookie-Editor để kết nối tài khoản Facebook',
+      },
+      {
+        key: 'proxyUrl',
+        label: 'Proxy (Tùy chọn - HTTP/SOCKS5)',
+        validation: `//`,
+        type: 'text' as const,
+        description:
+          'Ví dụ: http://user:pass@ip:port nếu muốn dùng IP dân cư cố định',
+      },
+    ];
+  }
+
+  /**
+   * Xác thực Cookie thông qua FacebookAdapter & kiểm tra trạng thái tài khoản
+   */
+  async authenticate(params: {
+    code: string;
+    codeVerifier: string;
+    refresh?: string;
+  }): Promise<AuthTokenDetails> {
+    const rawData = Buffer.from(params.code, 'base64').toString('utf-8');
+    let cookies = '';
+    let proxyUrl = '';
+
+    try {
+      const parsed = JSON.parse(rawData);
+      cookies = parsed.cookies || rawData;
+      proxyUrl = parsed.proxyUrl || '';
+    } catch {
+      cookies = rawData;
+    }
+
+    const adapter = new FacebookAdapter();
+    const userInfo = await adapter.validateSession(cookies, proxyUrl);
+
+    if (!userInfo?.id) {
+      throw new Error(
+        'Không thể xác thực cookie Facebook hoặc tài khoản đang bị checkpoint.'
+      );
+    }
+
+    return {
+      id: userInfo.id,
+      name: userInfo.name,
+      accessToken: cookies,
+      refreshToken: proxyUrl || '',
+      expiresIn: 60 * 24 * 60 * 60, // 60 ngày
+      picture: userInfo.picture,
+      username: userInfo.id,
+    };
+  }
+
+  /**
+   * Trích xuất danh sách kênh con: Trang cá nhân (Profile) + Danh sách Hội nhóm (Groups)
+   */
+  @DashboardFunction()
+  async pages(accessToken: string) {
+    const adapter = new FacebookAdapter();
+
+    let userInfo: any = null;
+    try {
+      userInfo = await adapter.validateSession(accessToken);
+    } catch {
+      userInfo = { id: 'me', name: 'Trang cá nhân', picture: '' };
+    }
+
+    const groups = await adapter.getJoinedGroups(accessToken);
+
+    return [
+      // Kênh Trang cá nhân
+      {
+        id: 'me',
+        name: `Trang cá nhân (${userInfo.name})`,
+        picture: userInfo.picture,
+      },
+      // Danh sách các Hội nhóm
+      ...groups.map((g) => ({
+        id: g.id,
+        name: `[Nhóm] ${g.name}`,
+        picture: g.picture,
+      })),
+    ];
+  }
+
+  /**
+   * Lưu thông tin kênh được người dùng tích chọn vào cơ sở dữ liệu
+   */
+  async fetchPageInformation(
+    accessToken: string,
+    data: { id: string; name?: string; picture?: string }
+  ) {
+    return {
+      id: data.id, // 'me' hoặc group ID
+      name:
+        data.name ||
+        (data.id === 'me' ? 'Facebook Profile' : `FB Group ${data.id}`),
+      access_token: accessToken,
+      picture: data.picture || '',
+      username: data.id,
+    };
+  }
+
+  /**
+   * Đăng bài chính lên Profile hoặc Group
+   */
+  async post(
+    id: string,
+    accessToken: string,
+    postDetails: PostDetails[],
+    integration: Integration
+  ): Promise<PostResponse[]> {
+    const [firstPost] = postDetails;
+    const adapter = new FacebookAdapter();
+
+    let result;
+    if (integration.internalId === 'me') {
+      // Đăng lên Trang cá nhân (Personal Profile)
+      result = await adapter.publishToProfile({
+        cookies: accessToken,
+        message: firstPost.message,
+        media: firstPost.media || [],
+      });
+    } else {
+      // Đăng vào Hội nhóm (Facebook Group)
+      result = await adapter.publishToGroup({
+        cookies: accessToken,
+        groupId: integration.internalId,
+        message: firstPost.message,
+        media: firstPost.media || [],
+      });
+    }
+
+    return [
+      {
+        id: firstPost.id,
+        postId: result.url || result.postId,
+        releaseURL:
+          result.url ||
+          (integration.internalId === 'me'
+            ? 'https://www.facebook.com/me'
+            : `https://www.facebook.com/groups/${integration.internalId}`),
+        status: result.status,
+      },
+    ];
+  }
+
+  /**
+   * Tự động đăng bình luận đầu tiên dưới bài viết (First Comment / Link dưới bình luận)
+   */
+  async comment(
+    id: string,
+    postId: string,
+    lastCommentId: string | undefined,
+    accessToken: string,
+    postDetails: PostDetails[],
+    integration: Integration
+  ): Promise<PostResponse[]> {
+    const [commentPost] = postDetails;
+    const adapter = new FacebookAdapter();
+
+    const targetUrl =
+      postId.startsWith('http')
+        ? postId
+        : integration.internalId === 'me'
+        ? 'https://www.facebook.com/me'
+        : `https://www.facebook.com/groups/${integration.internalId}`;
+
+    const result = await adapter.addCommentToPost({
+      cookies: accessToken,
+      postUrl: targetUrl,
+      message: commentPost.message,
+      media: commentPost.media || [],
+    });
+
+    return [
+      {
+        id: commentPost.id,
+        postId: result.commentId,
+        releaseURL: result.url,
+        status: result.status,
+      },
+    ];
+  }
+}
+

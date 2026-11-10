@@ -75,6 +75,10 @@ export const Providers = [
     component: FacebookProvider,
   },
   {
+    identifier: 'facebook-personal',
+    component: FacebookProvider,
+  },
+  {
     identifier: 'instagram',
     component: InstagramProvider,
   },
