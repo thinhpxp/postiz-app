@@ -8,6 +8,7 @@ import {
 import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 import { Integration } from '@prisma/client';
 import { FacebookPersonalDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/facebook.personal.dto';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { FacebookAdapter } from './browser-bot/facebook.adapter';
 
 export class FacebookPersonalProvider
@@ -42,10 +43,11 @@ export class FacebookPersonalProvider
   }
 
   async generateAuthUrl() {
+    const state = makeSecureId(6);
     return {
-      url: '',
-      codeVerifier: '',
-      state: '',
+      url: state,
+      codeVerifier: makeSecureId(10),
+      state,
     };
   }
 
