@@ -67,8 +67,9 @@ export class FacebookPersonalProvider
         label: 'Proxy (Tùy chọn - HTTP/SOCKS5)',
         validation: `//`,
         type: 'text' as const,
+        optional: true,
         description:
-          'Ví dụ: http://user:pass@ip:port nếu muốn dùng IP dân cư cố định',
+          'Ví dụ: http://user:pass@ip:port nếu muốn dùng IP dân cư cố định (Để trống nếu không dùng)',
       },
     ];
   }

@@ -219,6 +219,7 @@ export interface SocialProvider
       validation: string;
       type: 'text' | 'password';
       hint?: string;
+      optional?: boolean;
     }[]
   >;
   name: string;

@@ -166,6 +166,7 @@ export const CustomVariables: FC<{
     validation: string;
     type: 'text' | 'password';
     hint?: string;
+    optional?: boolean;
   }>;
   close?: () => void;
   identifier: string;
@@ -183,11 +184,18 @@ export const CustomVariables: FC<{
           splitter.slice(1, -1).join('/'),
           splitter.pop()
         );
+        const isOptional = item.optional || item.validation === '//';
         return {
           ...aIcc,
-          [item.key]: string()
-            .matches(regex, `${item.label} is invalid`)
-            .required(),
+          [item.key]: isOptional
+            ? string().test(
+                'regex-optional',
+                `${item.label} is invalid`,
+                (val) => !val || regex.test(val)
+              )
+            : string()
+                .matches(regex, `${item.label} is invalid`)
+                .required(),
         };
       }, {}),
     });
