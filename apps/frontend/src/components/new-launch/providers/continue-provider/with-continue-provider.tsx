@@ -196,7 +196,7 @@ export function withContinueProvider<TItem, TSelection>(
             {t(titleKey, titleDefault)}
           </div>
           {filteredData.length > 0 && (
-            <div className="text-[12px] font-[500] px-[8px] py-[3px] rounded-full bg-white/10 text-white/90">
+            <div className="text-[12px] font-[500] px-[8px] py-[3px] rounded-full bg-white/10 text-white">
               {t('selected_channels_count', '{{selected}} of {{total}} selected', {
                 selected: selectedCount,
                 total: filteredData.length,
@@ -214,13 +214,13 @@ export function withContinueProvider<TItem, TSelection>(
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('search_channels', 'Search by name...')}
-                className="w-full h-[36px] px-[12px] text-[13px] rounded-[8px] bg-newBgColorInner border border-newColColor text-textColor outline-none focus:border-[#612BD3]"
+                className="w-full h-[36px] px-[12px] text-[13px] rounded-[8px] bg-white/5 border border-white/20 text-white placeholder:text-white/40 outline-none focus:border-[#612BD3] focus:ring-1 focus:ring-[#612BD3] transition-all"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch('')}
-                  className="absolute right-[10px] top-[50%] -translate-y-[50%] text-textColor/50 hover:text-textColor text-[12px]"
+                  className="absolute right-[10px] top-[50%] -translate-y-[50%] text-white/50 hover:text-white text-[12px]"
                 >
                   ✕
                 </button>
@@ -230,7 +230,7 @@ export function withContinueProvider<TItem, TSelection>(
             <button
               type="button"
               onClick={handleToggleAll}
-              className="h-[36px] px-[12px] rounded-[8px] border border-newColColor text-[12px] font-[500] hover:bg-newTextColor/5 text-textColor transition-colors flex-shrink-0 cursor-pointer"
+              className="h-[36px] px-[14px] rounded-[8px] border border-white/20 bg-white/10 text-[12px] font-[600] hover:bg-white/15 text-white transition-colors flex-shrink-0 cursor-pointer shadow-sm"
             >
               {isAllSelected
                 ? t('deselect_all', 'Deselect All')
@@ -240,7 +240,7 @@ export function withContinueProvider<TItem, TSelection>(
         )}
 
         {/* Grid of selectable items */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 max-h-[50vh] overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner select-none gap-[10px] p-[2px]">
+        <div className="grid grid-cols-2 sm:grid-cols-3 max-h-[50vh] overflow-y-auto select-none gap-[10px] p-[2px]">
           {displayedData.map((item) => {
             const id = getItemId(item);
             const isItemChecked = !!selectedMap[id];
@@ -248,10 +248,10 @@ export function withContinueProvider<TItem, TSelection>(
               <div
                 key={id}
                 className={clsx(
-                  'group relative flex flex-col w-full text-center gap-[10px] border p-[12px] rounded-[10px] transition-all cursor-pointer bg-newBgColorInner',
+                  'group relative flex flex-col w-full text-center text-white gap-[10px] border p-[12px] rounded-[10px] transition-all cursor-pointer select-none',
                   isItemChecked
-                    ? 'border-[#612BD3] bg-[#612BD3]/10 ring-2 ring-[#612BD3]/30 shadow-sm'
-                    : 'border-newTableBorder hover:border-textColor/40'
+                    ? 'border-[#612BD3] bg-[#612BD3]/20 ring-2 ring-[#612BD3]/40 shadow-sm'
+                    : 'border-white/10 bg-[#242323] hover:border-white/25 hover:bg-[#2b2a2a]'
                 )}
                 onClick={handleToggle(item)}
               >
@@ -273,7 +273,7 @@ export function withContinueProvider<TItem, TSelection>(
                       </svg>
                     </div>
                   ) : (
-                    <div className="w-[20px] h-[20px] rounded-full border-2 border-textColor/30 group-hover:border-textColor/60 bg-newBgColorInner transition-colors" />
+                    <div className="w-[20px] h-[20px] rounded-full border-2 border-white/30 group-hover:border-white/60 bg-black/40 transition-colors" />
                   )}
                 </div>
 
@@ -284,7 +284,7 @@ export function withContinueProvider<TItem, TSelection>(
         </div>
 
         {/* Footer with dynamic Save Button */}
-        <div className="pt-[10px] border-t border-newTableBorder flex justify-end">
+        <div className="pt-[12px] border-t border-white/10 flex justify-end">
           <Button
             disabled={selectedCount === 0 || isSaving}
             loading={isSaving}
