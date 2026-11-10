@@ -281,6 +281,137 @@ export class FacebookAdapter extends BaseBrowserBot {
   }
 
   /**
+   * Helper: Click vào nút mở hộp thoại tạo bài viết trên Profile hoặc Group
+   */
+  private async triggerComposer(page: any, type: 'profile' | 'group') {
+    // 1. Thử tìm và click element theo text content
+    const clicked = await page.evaluate((botType: string) => {
+      const keywords =
+        botType === 'profile'
+          ? ['Bạn đang nghĩ gì', "What's on your mind", 'on your mind']
+          : ['Bạn viết gì đi', 'Write something', 'on your mind'];
+
+      const all = Array.from(document.querySelectorAll('span, div'));
+      const target = all.find(
+        (el) =>
+          el.textContent &&
+          keywords.some((kw) => el.textContent!.toLowerCase().includes(kw.toLowerCase())) &&
+          el.children.length === 0
+      );
+
+      if (!target) return false;
+      const btn = target.closest('[role="button"]') || target;
+      btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+      const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+      btn.dispatchEvent(evt);
+      if (typeof (btn as any).click === 'function') {
+        (btn as any).click();
+      }
+      return true;
+    }, type);
+
+    if (!clicked) {
+      const fallbackSelector =
+        type === 'profile'
+          ? '[role="button"][aria-label*="Bạn đang nghĩ gì"], [role="button"][aria-label*="What\'s on your mind"]'
+          : '[role="button"][aria-label*="Bạn viết gì đi"], [role="button"][aria-label*="Write something"]';
+      await page.waitForSelector(fallbackSelector, { timeout: 15000 });
+      await page.click(fallbackSelector);
+    }
+  }
+
+  /**
+   * Helper: Bấm nút Tiếp/Đăng và hoàn tất quá trình đăng bài trong Dialog
+   */
+  private async submitPostInDialog(page: any) {
+    // Tìm và bấm nút Tiếp hoặc Đăng trong dialog
+    const clickResult = await page.evaluate(() => {
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+      const postDialog = dialogs.find((d) => d.querySelector('[role="textbox"]'));
+      if (!postDialog) return null;
+
+      const buttons = Array.from(postDialog.querySelectorAll('[role="button"], button'));
+      const btn = buttons.find((b) => {
+        const label = (b.getAttribute('aria-label') || '').toLowerCase();
+        const text = (b.textContent || '').trim().toLowerCase();
+        return (
+          label === 'tiếp' ||
+          label === 'next' ||
+          label === 'đăng' ||
+          label === 'post' ||
+          text === 'tiếp' ||
+          text === 'next' ||
+          text === 'đăng' ||
+          text === 'post'
+        );
+      });
+
+      if (!btn) return null;
+      const isNext =
+        (btn.getAttribute('aria-label') || '').toLowerCase().includes('tiếp') ||
+        (btn.getAttribute('aria-label') || '').toLowerCase().includes('next') ||
+        (btn.textContent || '').trim().toLowerCase() === 'tiếp' ||
+        (btn.textContent || '').trim().toLowerCase() === 'next';
+
+      (btn as any).click();
+      return { clicked: true, isNext };
+    });
+
+    if (!clickResult || !clickResult.clicked) {
+      // Fallback click bằng selector thông thường
+      const submitBtn =
+        '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Tiếp"], [role="dialog"] [aria-label="Next"]';
+      await page.waitForSelector(submitBtn, { visible: true, timeout: 10000 });
+      await page.click(submitBtn);
+    }
+
+    // Nếu vừa bấm "Tiếp" (Profile chế độ chuyên nghiệp / Professional Mode), chờ nút "Đăng" xuất hiện ở bước 2
+    if (clickResult?.isNext) {
+      await this.randomDelay(2000, 3000);
+      const clickedFinalPost = await page.evaluate(() => {
+        const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+        for (const dialog of dialogs) {
+          const buttons = Array.from(dialog.querySelectorAll('[role="button"], button'));
+          const postBtn = buttons.find((b) => {
+            const label = (b.getAttribute('aria-label') || '').toLowerCase();
+            const text = (b.textContent || '').trim().toLowerCase();
+            return label === 'đăng' || label === 'post' || text === 'đăng' || text === 'post';
+          });
+          if (postBtn) {
+            (postBtn as any).click();
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!clickedFinalPost) {
+        const finalSubmitBtn = '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"]';
+        await page.waitForSelector(finalSubmitBtn, { visible: true, timeout: 10000 });
+        await page.click(finalSubmitBtn);
+      }
+    }
+
+    // Chờ cho hộp thoại đóng lại (đã đăng thành công)
+    await page.waitForFunction(
+      () => {
+        const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+        const activePostDialogs = dialogs.filter((d) => {
+          const text = d.textContent || '';
+          return (
+            d.querySelector('[role="textbox"]') ||
+            text.includes('Tạo bài viết') ||
+            text.includes('Create a post') ||
+            text.includes('Cài đặt bài viết')
+          );
+        });
+        return activePostDialogs.length === 0;
+      },
+      { timeout: 35000 }
+    );
+  }
+
+  /**
    * 3. Đăng bài lên Trang cá nhân (Personal Profile)
    */
   async publishToProfile(payload: PostPublishPayload) {
@@ -299,16 +430,17 @@ export class FacebookAdapter extends BaseBrowserBot {
 
       await this.randomDelay(1500, 2500);
 
-      // Tìm và click vào ô tạo bài viết: "Bạn đang nghĩ gì thế?"
-      const composerBtn =
-        '[role="button"][aria-label*="Bạn đang nghĩ gì"], [role="button"][aria-label*="What\'s on your mind"]';
-      await page.waitForSelector(composerBtn, { timeout: 15000 });
-      await page.click(composerBtn);
+      // Đóng bất kỳ popup / menu thông báo nào có thể đang che khuất
+      await page.keyboard.press('Escape');
+      await this.randomDelay(500, 1000);
 
-      await this.randomDelay(1000, 2000);
+      // Tìm và click vào ô tạo bài viết: "Bạn đang nghĩ gì thế?"
+      await this.triggerComposer(page, 'profile');
+      await this.randomDelay(1500, 2500);
 
       // Hộp thoại tạo bài viết hiện lên
       const editorSelector = '[role="dialog"] [role="textbox"][contenteditable="true"]';
+      await page.waitForSelector(editorSelector, { timeout: 15000 });
       await this.typeHuman(page, editorSelector, payload.message);
 
       // Đính kèm ảnh/video nếu có
@@ -318,17 +450,51 @@ export class FacebookAdapter extends BaseBrowserBot {
 
       await this.randomDelay(1000, 2000);
 
-      // Bấm nút Đăng
-      const submitBtn =
-        '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"]';
-      await page.waitForSelector(submitBtn, { visible: true, timeout: 10000 });
-      await page.click(submitBtn);
+      // Bấm nút Tiếp / Đăng
+      await this.submitPostInDialog(page);
+      await this.randomDelay(3000, 4000);
 
-      // Chờ cho hộp thoại biến mất (đã đăng thành công)
-      await page.waitForSelector('[role="dialog"]', { hidden: true, timeout: 30000 });
-      await this.randomDelay(2000, 3000);
+      // Cố gắng trích xuất permalink của bài viết vừa đăng trên Trang cá nhân
+      let postUrl = page.url();
+      try {
+        const extracted = await page.evaluate(() => {
+          // 1. Toast thông báo ("Đã chia sẻ bài viết của bạn. Xem bài viết")
+          const toastLink = Array.from(document.querySelectorAll('a[href]')).find((a) => {
+            const t = (a.textContent || '').toLowerCase();
+            const href = a.getAttribute('href') || '';
+            return (
+              (t.includes('xem bài viết') || t.includes('view post')) &&
+              (href.includes('/posts/') || href.includes('pfbid') || href.includes('permalink'))
+            );
+          });
+          if (toastLink) return toastLink.getAttribute('href');
 
-      const postUrl = page.url();
+          // 2. Link bài viết mới nhất trên timeline có timestamp "Vừa xong"
+          const recentLink = Array.from(
+            document.querySelectorAll('div[role="article"] a[href], div[role="main"] a[href]')
+          ).find((a) => {
+            const t = (a.textContent || '').trim().toLowerCase();
+            const aria = (a.getAttribute('aria-label') || '').toLowerCase();
+            const href = a.getAttribute('href') || '';
+            const isRecent =
+              t === 'vừa xong' ||
+              t === 'just now' ||
+              aria.includes('vừa xong') ||
+              aria.includes('just now');
+            return isRecent && (href.includes('/posts/') || href.includes('pfbid') || href.includes('permalink'));
+          });
+          if (recentLink) return recentLink.getAttribute('href');
+
+          return null;
+        });
+
+        if (extracted) {
+          postUrl = extracted.startsWith('http') ? extracted : `https://www.facebook.com${extracted}`;
+        }
+      } catch (e) {
+        // Giữ fallback page.url()
+      }
+
       return {
         postId: `profile_post_${Date.now()}`,
         url: postUrl,
@@ -368,16 +534,17 @@ export class FacebookAdapter extends BaseBrowserBot {
 
       await this.randomDelay(1500, 2500);
 
-      // Tìm ô tạo bài viết trong nhóm: "Bạn viết gì đi...", "Write something..."
-      const groupComposerBtn =
-        '[role="button"][aria-label*="Bạn viết gì đi"], [role="button"][aria-label*="Write something"]';
-      await page.waitForSelector(groupComposerBtn, { timeout: 15000 });
-      await page.click(groupComposerBtn);
+      // Đóng popup nếu có
+      await page.keyboard.press('Escape');
+      await this.randomDelay(500, 1000);
 
-      await this.randomDelay(1000, 2000);
+      // Tìm ô tạo bài viết trong nhóm: "Bạn viết gì đi...", "Write something..."
+      await this.triggerComposer(page, 'group');
+      await this.randomDelay(1500, 2500);
 
       // Nhập nội dung bài viết
       const editorSelector = '[role="dialog"] [role="textbox"][contenteditable="true"]';
+      await page.waitForSelector(editorSelector, { timeout: 15000 });
       await this.typeHuman(page, editorSelector, payload.message);
 
       // Đính kèm file ảnh/video nếu có
@@ -387,19 +554,53 @@ export class FacebookAdapter extends BaseBrowserBot {
 
       await this.randomDelay(1000, 2000);
 
-      // Bấm nút Đăng
-      const submitBtn =
-        '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"]';
-      await page.waitForSelector(submitBtn, { visible: true, timeout: 10000 });
-      await page.click(submitBtn);
+      // Bấm nút Đăng trong Group
+      await this.submitPostInDialog(page);
+      await this.randomDelay(3000, 4000);
 
-      // Chờ đóng dialog hoặc kiểm tra thông báo chờ duyệt
-      await page.waitForSelector('[role="dialog"]', { hidden: true, timeout: 30000 });
-      await this.randomDelay(2000, 3000);
+      let postUrl = `https://www.facebook.com/groups/${payload.groupId}`;
+      try {
+        const extracted = await page.evaluate((gid: string) => {
+          // 1. Toast link
+          const toastLink = Array.from(document.querySelectorAll('a[href]')).find((a) => {
+            const t = (a.textContent || '').toLowerCase();
+            const href = a.getAttribute('href') || '';
+            return (
+              (t.includes('xem bài viết') || t.includes('view post')) &&
+              (href.includes('/posts/') || href.includes('permalink'))
+            );
+          });
+          if (toastLink) return toastLink.getAttribute('href');
+
+          // 2. Link bài viết mới nhất có timestamp "Vừa xong"
+          const recentLink = Array.from(
+            document.querySelectorAll('div[role="feed"] a[href], div[role="article"] a[href]')
+          ).find((a) => {
+            const t = (a.textContent || '').trim().toLowerCase();
+            const aria = (a.getAttribute('aria-label') || '').toLowerCase();
+            const href = a.getAttribute('href') || '';
+            const isRecent =
+              t === 'vừa xong' ||
+              t === 'just now' ||
+              aria.includes('vừa xong') ||
+              aria.includes('just now');
+            return isRecent && href.includes(`/groups/${gid}/posts/`);
+          });
+          if (recentLink) return recentLink.getAttribute('href');
+
+          return null;
+        }, payload.groupId);
+
+        if (extracted) {
+          postUrl = extracted.startsWith('http') ? extracted : `https://www.facebook.com${extracted}`;
+        }
+      } catch (e) {
+        // Giữ fallback group URL
+      }
 
       return {
         postId: `group_${payload.groupId}_${Date.now()}`,
-        url: `https://www.facebook.com/groups/${payload.groupId}`,
+        url: postUrl,
         status: 'completed',
       };
     } catch (err: any) {
@@ -426,22 +627,211 @@ export class FacebookAdapter extends BaseBrowserBot {
 
       await page.goto(payload.postUrl, {
         waitUntil: 'networkidle2',
-        timeout: 30000,
+        timeout: 35000,
       });
 
       await this.randomDelay(1500, 2500);
-
-      // Tìm ô viết bình luận
-      const commentInputSelector =
-        '[aria-label*="Viết bình luận"], [aria-label*="Write a comment"], [role="textbox"][contenteditable="true"]';
-      await page.waitForSelector(commentInputSelector, { timeout: 15000 });
-
-      // Gõ nội dung bình luận (link, hashtag, CTA)
-      await this.typeHuman(page, commentInputSelector, payload.message);
+      await page.keyboard.press('Escape');
       await this.randomDelay(500, 1000);
+
+      const isDirectPost =
+        payload.postUrl.includes('/posts/') ||
+        payload.postUrl.includes('permalink') ||
+        payload.postUrl.includes('story.php');
+
+      // Nếu là URL trang tổng (Profile timeline hoặc Group feed), cuộn nhẹ để Facebook nạp bài viết
+      if (!isDirectPost) {
+        await page.evaluate(() => {
+          window.scrollBy(0, 500);
+        });
+        await this.randomDelay(1500, 2500);
+      }
+
+      // Tìm và kích hoạt ô bình luận của bài viết mục tiêu
+      const activated = await page.evaluate((isSinglePost: boolean) => {
+        let postContainer: HTMLElement | null = null;
+
+        if (isSinglePost) {
+          postContainer =
+            document.querySelector('div[role="main"]') ||
+            document.querySelector('div[role="article"]') ||
+            document.body;
+        } else {
+          // Trang feed (Profile hoặc Group): Tìm bài viết thật đầu tiên
+          const articles = Array.from(
+            document.querySelectorAll(
+              'div[role="article"], div[role="feed"] > div, div[role="main"] div'
+            )
+          ) as HTMLElement[];
+
+          postContainer =
+            articles.find((el) => {
+              const text = (el.innerText || '').trim();
+              if (text.length < 30 || text.length > 5000) return false;
+
+              // Loại bỏ banner quảng cáo demo của Meta trên profile
+              const isDemoAd =
+                text.includes('Được tài trợ (bản demo)') ||
+                text.includes('Hãy thử chạy quảng cáo');
+              if (isDemoAd) return false;
+
+              // Kiểm tra xem phần tử có chứa các nút tương tác bài viết không
+              const hasActions =
+                text.includes('Bình luận') ||
+                text.includes('Comment') ||
+                text.includes('Thích') ||
+                text.includes('Like');
+
+              return hasActions;
+            }) || null;
+        }
+
+        if (!postContainer) return { success: false, reason: 'post_not_found' };
+
+        postContainer.scrollIntoView({ behavior: 'instant', block: 'center' });
+
+        // Kiểm tra xem ô nhập bình luận đã mở sẵn chưa
+        let textbox = postContainer.querySelector(
+          'div[role="textbox"][contenteditable="true"]'
+        ) as HTMLElement | null;
+
+        if (!textbox) {
+          // Tìm nút "Bình luận" của bài viết này để mở hộp thoại bình luận
+          const buttons = Array.from(
+            postContainer.querySelectorAll('[role="button"]')
+          ) as HTMLElement[];
+
+          const commentBtn = buttons.find((b) => {
+            const text = (b.textContent || '').trim().toLowerCase();
+            const label = (b.getAttribute('aria-label') || '').toLowerCase();
+            return (
+              (text === 'bình luận' ||
+                text === 'comment' ||
+                label === 'bình luận' ||
+                label.includes('bình luận') ||
+                label.includes('comment')) &&
+              !label.includes('nhãn dán') &&
+              !label.includes('sticker') &&
+              !label.includes('xóa') &&
+              !label.includes('delete') &&
+              !label.includes('gif') &&
+              !label.includes('bản demo')
+            );
+          });
+
+          if (commentBtn) {
+            commentBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            if (typeof commentBtn.click === 'function') {
+              commentBtn.click();
+            } else {
+              commentBtn.dispatchEvent(
+                new MouseEvent('click', { bubbles: true, cancelable: true, view: window })
+              );
+            }
+          }
+        }
+
+        return { success: true };
+      }, isDirectPost);
+
+      if (!activated.success) {
+        throw new Error(
+          `Không tìm thấy bài viết hoặc nút bình luận trên ${payload.postUrl}: ${activated.reason}`
+        );
+      }
+
+      await this.randomDelay(1500, 2500);
+
+      // Focus vào ô nhập bình luận (chính xác selector role textbox và contenteditable)
+      const focused = await page.evaluate((isSinglePost: boolean) => {
+        let textbox: HTMLElement | null = null;
+
+        if (!isSinglePost) {
+          const articles = Array.from(
+            document.querySelectorAll(
+              'div[role="article"], div[role="feed"] > div, div[role="main"] div'
+            )
+          ) as HTMLElement[];
+
+          const targetPost = articles.find((el) => {
+            const text = (el.innerText || '').trim();
+            return (
+              text.length >= 30 &&
+              !text.includes('Được tài trợ (bản demo)') &&
+              (text.includes('Bình luận') || text.includes('Comment'))
+            );
+          });
+
+          if (targetPost) {
+            textbox = targetPost.querySelector(
+              'div[role="textbox"][contenteditable="true"]'
+            );
+          }
+        }
+
+        if (!textbox) {
+          textbox = document.querySelector(
+            'div[role="textbox"][contenteditable="true"][aria-label*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-label*="Comment"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Comment"]'
+          );
+        }
+
+        if (textbox) {
+          textbox.focus();
+          return true;
+        }
+
+        const active = document.activeElement;
+        if (
+          active &&
+          active.getAttribute('contenteditable') === 'true' &&
+          active.getAttribute('role') === 'textbox'
+        ) {
+          return true;
+        }
+
+        return false;
+      }, isDirectPost);
+
+      if (!focused) {
+        const fallbackSel =
+          'div[role="textbox"][contenteditable="true"][aria-label*="Bình luận"], div[role="textbox"][contenteditable="true"]';
+        await page.waitForSelector(fallbackSel, { visible: true, timeout: 15000 });
+        await page.focus(fallbackSel);
+      }
+
+      await this.randomDelay(500, 1000);
+
+      // Gõ nội dung bình luận mô phỏng người thật
+      for (const char of payload.message) {
+        await page.keyboard.type(char);
+        await this.randomDelay(20, 50);
+      }
+
+      await this.randomDelay(1000, 1800);
 
       // Nhấn Enter để gửi comment
       await page.keyboard.press('Enter');
+      await this.randomDelay(2500, 3500);
+
+      // Bấm nút Gửi (Send button / icon máy bay giấy) nếu có
+      await page.evaluate(() => {
+        const sendBtns = Array.from(
+          document.querySelectorAll('[role="button"]')
+        ) as HTMLElement[];
+        const sendBtn = sendBtns.find((b) => {
+          const label = (b.getAttribute('aria-label') || '').toLowerCase();
+          return (
+            label === 'bình luận' ||
+            label === 'comment' ||
+            label === 'gửi' ||
+            label === 'send'
+          );
+        });
+        if (sendBtn) {
+          sendBtn.click();
+        }
+      });
+
       await this.randomDelay(2000, 3000);
 
       return {
