@@ -111,11 +111,11 @@ export class FacebookAdapter extends BaseBrowserBot {
 
       // Trang danh sách toàn bộ các nhóm đã tham gia
       await page.goto('https://www.facebook.com/groups/joins/', {
-        waitUntil: 'networkidle2',
-        timeout: 30000,
+        waitUntil: 'domcontentloaded',
+        timeout: 20000,
       });
 
-      await this.randomDelay(1500, 2500);
+      await this.randomDelay(2000, 3000);
 
       // Cuộn trang nhẹ để kích hoạt tải dữ liệu các nhóm
       await page.evaluate(() => {

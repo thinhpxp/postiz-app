@@ -120,13 +120,8 @@ export class FacebookPersonalProvider
   @DashboardFunction()
   async pages(accessToken: string) {
     const adapter = new FacebookAdapter();
-
-    let userInfo: any = null;
-    try {
-      userInfo = await adapter.validateSession(accessToken);
-    } catch {
-      userInfo = { id: 'me', name: 'Trang cá nhân', picture: '' };
-    }
+    const cookies = adapter.parseCookies(accessToken);
+    const cUser = cookies.find((c) => c.name === 'c_user')?.value || 'me';
 
     const groups = await adapter.getJoinedGroups(accessToken);
 
@@ -134,8 +129,8 @@ export class FacebookPersonalProvider
       // Kênh Trang cá nhân
       {
         id: 'me',
-        name: `Trang cá nhân (${userInfo.name})`,
-        picture: userInfo.picture,
+        name: `Trang cá nhân (ID: ${cUser})`,
+        picture: `https://graph.facebook.com/${cUser}/picture?type=large`,
       },
       // Danh sách các Hội nhóm
       ...groups.map((g) => ({
@@ -151,16 +146,17 @@ export class FacebookPersonalProvider
    */
   async fetchPageInformation(
     accessToken: string,
-    data: { id: string; name?: string; picture?: string }
+    data: { id?: string; page?: string; name?: string; picture?: string }
   ) {
+    const targetId = data.id || data.page || 'me';
     return {
-      id: data.id, // 'me' hoặc group ID
+      id: targetId, // 'me' hoặc group ID
       name:
         data.name ||
-        (data.id === 'me' ? 'Facebook Profile' : `FB Group ${data.id}`),
+        (targetId === 'me' ? 'Facebook Profile' : `FB Group ${targetId}`),
       access_token: accessToken,
       picture: data.picture || '',
-      username: data.id,
+      username: targetId,
     };
   }
 

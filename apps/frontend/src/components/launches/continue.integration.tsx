@@ -267,6 +267,7 @@ export const ContinueIntegration: FC<{
   const providerDisplayName = useMemo(() => {
     const names: Record<string, string> = {
       facebook: 'Facebook',
+      'facebook-personal': 'Facebook (Profile & Groups)',
       instagram: 'Instagram',
       'linkedin-page': 'LinkedIn',
       youtube: 'YouTube',
