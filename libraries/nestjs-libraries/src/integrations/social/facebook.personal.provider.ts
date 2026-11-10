@@ -120,25 +120,45 @@ export class FacebookPersonalProvider
    * Trích xuất danh sách kênh con: Trang cá nhân (Profile) + Danh sách Hội nhóm (Groups)
    */
   @DashboardFunction()
-  async pages(accessToken: string) {
+  async pages(
+    accessToken: string,
+    _data?: any,
+    _internalId?: string,
+    integration?: any
+  ) {
     const adapter = new FacebookAdapter();
     const cookies = adapter.parseCookies(accessToken);
     const cUser = cookies.find((c) => c.name === 'c_user')?.value || 'me';
+    const proxyUrl = integration?.refreshToken || '';
 
-    const groups = await adapter.getJoinedGroups(accessToken);
+    const { profilePicture, groups } = await adapter.getJoinedGroups(
+      accessToken,
+      proxyUrl
+    );
+
+    const finalProfilePicture =
+      profilePicture ||
+      integration?.picture ||
+      `https://graph.facebook.com/${cUser}/picture?type=large`;
+
+    const profileName = integration?.name
+      ? integration.name.startsWith('Trang cá nhân')
+        ? integration.name
+        : `Trang cá nhân (${integration.name})`
+      : `Trang cá nhân (ID: ${cUser})`;
 
     return [
       // Kênh Trang cá nhân
       {
         id: 'me',
-        name: `Trang cá nhân (ID: ${cUser})`,
-        picture: `https://graph.facebook.com/${cUser}/picture?type=large`,
+        name: profileName,
+        picture: finalProfilePicture,
       },
-      // Danh sách các Hội nhóm
+      // Danh sách các Hội nhóm (đã sắp xếp nhóm Quản trị viên lên trước)
       ...groups.map((g) => ({
         id: g.id,
-        name: `[Nhóm] ${g.name}`,
-        picture: g.picture,
+        name: g.isAdmin ? `[Quản trị viên] ${g.name}` : `[Thành viên] ${g.name}`,
+        picture: g.picture || '',
       })),
     ];
   }
@@ -181,6 +201,7 @@ export class FacebookPersonalProvider
         cookies: accessToken,
         message: firstPost.message,
         media: firstPost.media || [],
+        proxyUrl: integration.refreshToken || '',
       });
     } else {
       // Đăng vào Hội nhóm (Facebook Group)
@@ -189,6 +210,7 @@ export class FacebookPersonalProvider
         groupId: integration.internalId,
         message: firstPost.message,
         media: firstPost.media || [],
+        proxyUrl: integration.refreshToken || '',
       });
     }
 
@@ -232,6 +254,7 @@ export class FacebookPersonalProvider
       postUrl: targetUrl,
       message: commentPost.message,
       media: commentPost.media || [],
+      proxyUrl: integration.refreshToken || '',
     });
 
     return [

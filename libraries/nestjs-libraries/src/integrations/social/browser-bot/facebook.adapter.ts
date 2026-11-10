@@ -12,6 +12,12 @@ export interface FacebookGroupItem {
   id: string;
   name: string;
   picture: string;
+  isAdmin: boolean;
+}
+
+export interface FacebookPagesResult {
+  profilePicture?: string;
+  groups: FacebookGroupItem[];
 }
 
 export interface PostPublishPayload {
@@ -20,6 +26,7 @@ export interface PostPublishPayload {
   media?: Array<{ path: string; type?: string }>;
   groupId?: string;
   audience?: 'public' | 'friends';
+  proxyUrl?: string;
 }
 
 export interface CommentPublishPayload {
@@ -27,6 +34,7 @@ export interface CommentPublishPayload {
   postUrl: string;
   message: string;
   media?: Array<{ path: string; type?: string }>;
+  proxyUrl?: string;
 }
 
 export class FacebookAdapter extends BaseBrowserBot {
@@ -45,7 +53,7 @@ export class FacebookAdapter extends BaseBrowserBot {
       throw new Error('Cookie thiếu c_user - phiên đăng nhập không đầy đủ.');
     }
 
-    const browser = await this.getBrowser();
+    const browser = await this.getBrowser(proxyUrl);
     let page: any;
 
     try {
@@ -79,8 +87,36 @@ export class FacebookAdapter extends BaseBrowserBot {
         displayName = `Facebook User (${cUser})`;
       }
 
-      // Avatar mặc định hoặc trích xuất từ DOM
-      const avatarUrl = `https://graph.facebook.com/${cUser}/picture?type=large`;
+      // Avatar từ DOM của trang cá nhân (thực tế từ Facebook CDN)
+      const extractedAvatar = await page.evaluate(() => {
+        const selectors = [
+          'svg image',
+          'div[role="main"] image',
+          'img[alt*="ảnh đại diện"]',
+          'img[alt*="profile picture"]',
+          'div[aria-label*="ảnh đại diện"] img',
+          'div[aria-label*="profile picture"] img',
+          'div[role="banner"] svg image',
+          'div[role="navigation"] svg image',
+        ];
+        for (const sel of selectors) {
+          const els = Array.from(document.querySelectorAll(sel));
+          for (const el of els) {
+            const src = el.getAttribute('xlink:href') || el.getAttribute('src');
+            if (
+              src &&
+              src.startsWith('http') &&
+              !src.includes('data:image') &&
+              (src.includes('fbcdn.net') || src.includes('facebook.com'))
+            ) {
+              return src;
+            }
+          }
+        }
+        return '';
+      });
+
+      const avatarUrl = extractedAvatar || `https://graph.facebook.com/${cUser}/picture?type=large`;
 
       return {
         id: cUser,
@@ -99,11 +135,14 @@ export class FacebookAdapter extends BaseBrowserBot {
   }
 
   /**
-   * 2. Lấy danh sách các Hội nhóm (Groups) mà tài khoản đã tham gia
+   * 2. Lấy danh sách các Hội nhóm (Groups) & ảnh đại diện tài khoản
    */
-  async getJoinedGroups(rawCookies: string): Promise<FacebookGroupItem[]> {
+  async getJoinedGroups(
+    rawCookies: string,
+    proxyUrl?: string
+  ): Promise<FacebookPagesResult> {
     const cookies = this.parseCookies(rawCookies);
-    const browser = await this.getBrowser();
+    const browser = await this.getBrowser(proxyUrl);
     let page: any;
 
     try {
@@ -112,21 +151,51 @@ export class FacebookAdapter extends BaseBrowserBot {
       // Trang danh sách toàn bộ các nhóm đã tham gia
       await page.goto('https://www.facebook.com/groups/joins/', {
         waitUntil: 'domcontentloaded',
-        timeout: 20000,
+        timeout: 25000,
       });
 
-      await this.randomDelay(2000, 3000);
+      await this.randomDelay(2500, 3500);
 
       // Cuộn trang nhẹ để kích hoạt tải dữ liệu các nhóm
       await page.evaluate(() => {
-        window.scrollBy(0, 1000);
+        window.scrollBy(0, 1200);
       });
-      await this.randomDelay(1000, 1500);
+      await this.randomDelay(1500, 2000);
 
-      // Trích xuất các liên kết nhóm
-      const groups = await page.evaluate(() => {
-        const items: Array<{ id: string; name: string; picture: string }> = [];
+      // Trích xuất các liên kết nhóm & phân loại Quản trị viên vs Thành viên
+      const result = await page.evaluate(() => {
+        // 1. Trích xuất avatar của tài khoản cá nhân từ top nav
+        let profilePicture = '';
+        const navImgEl = document.querySelector(
+          'div[role="banner"] svg image, div[role="navigation"] svg image, div[aria-label*="Tài khoản của bạn"] image, div[aria-label*="Your profile"] image'
+        );
+        if (navImgEl) {
+          profilePicture =
+            navImgEl.getAttribute('xlink:href') ||
+            navImgEl.getAttribute('src') ||
+            '';
+        }
+
+        // 2. Phân loại Admin Groups vs Member Groups
+        const adminGroups: Array<{ id: string; name: string; picture: string; isAdmin: boolean }> = [];
+        const memberGroups: Array<{ id: string; name: string; picture: string; isAdmin: boolean }> = [];
         const seen = new Set<string>();
+
+        // Tìm các tiêu đề phân nhóm
+        const headings = Array.from(document.querySelectorAll('span, h2, h3, div'));
+        const adminHeading = headings.find((h) => {
+          const t = (h as HTMLElement).innerText?.trim() || '';
+          return t === 'Nhóm do bạn quản lý' || t === 'Groups you manage';
+        });
+        const joinedHeading = headings.find((h) => {
+          const t = (h as HTMLElement).innerText?.trim() || '';
+          return (
+            t.startsWith('Nhóm bạn đã tham gia') ||
+            t.startsWith('Tất cả các nhóm') ||
+            t.startsWith("Groups you've joined") ||
+            t.startsWith("All groups you've joined")
+          );
+        });
 
         // Tìm tất cả các thẻ a dẫn tới /groups/
         const links = Array.from(document.querySelectorAll('a[href*="/groups/"]'));
@@ -144,33 +213,67 @@ export class FacebookAdapter extends BaseBrowserBot {
 
             if (!seen.has(rawId)) {
               seen.add(rawId);
-              const text = (link as HTMLElement).innerText?.trim() || '';
-              // Chỉ lấy các thẻ có tên nhóm rõ ràng
-              if (text.length > 2 && !text.includes('\n')) {
-                // Thử tìm ảnh thumbnail trong block nhóm
-                const parentBlock = link.closest('[role="listitem"]') || link.parentElement;
-                const img = parentBlock?.querySelector('img') as HTMLImageElement;
-                const imgSrc = img?.src || '';
+              const rawText = (link as HTMLElement).innerText?.trim() || '';
+              // Tách theo xuống dòng: dòng 1 là tên nhóm, dòng 2 là thông tin hoạt động
+              const name = rawText.split('\n')[0].trim();
+              if (
+                !name ||
+                name === 'Xem tất cả' ||
+                name === 'See all' ||
+                name === 'Nhóm của bạn' ||
+                name.length < 2
+              ) {
+                continue;
+              }
 
-                items.push({
-                  id: rawId,
-                  name: text,
-                  picture: imgSrc,
-                });
+              // Trích xuất ảnh thumbnail của nhóm từ container
+              const container =
+                link.closest('div[role="listitem"]') ||
+                link.parentElement?.parentElement ||
+                link;
+              const imgEl = container.querySelector('img, image');
+              const picture = imgEl
+                ? imgEl.getAttribute('src') || imgEl.getAttribute('xlink:href') || ''
+                : '';
+
+              let isAdmin = false;
+              if (adminHeading && joinedHeading) {
+                const pos = link.compareDocumentPosition(joinedHeading);
+                if (pos & Node.DOCUMENT_POSITION_FOLLOWING) {
+                  isAdmin = true;
+                }
+              } else if (adminHeading && !joinedHeading) {
+                isAdmin = true;
+              }
+
+              const item = {
+                id: rawId,
+                name,
+                picture,
+                isAdmin,
+              };
+
+              if (isAdmin) {
+                adminGroups.push(item);
+              } else {
+                memberGroups.push(item);
               }
             }
           }
         }
 
-        return items;
+        return {
+          profilePicture,
+          groups: [...adminGroups, ...memberGroups],
+        };
       });
 
-      return groups;
+      return result;
     } catch (err: any) {
       if (page) {
         await this.captureErrorScreenshot(page, 'fetch_groups_failed');
       }
-      return [];
+      return { groups: [] };
     } finally {
       if (page) await page.close().catch(() => {});
       await browser.disconnect().catch(() => {});
@@ -182,7 +285,7 @@ export class FacebookAdapter extends BaseBrowserBot {
    */
   async publishToProfile(payload: PostPublishPayload) {
     const cookies = this.parseCookies(payload.cookies);
-    const browser = await this.getBrowser();
+    const browser = await this.getBrowser(payload.proxyUrl);
     let page: any;
 
     try {
@@ -251,7 +354,7 @@ export class FacebookAdapter extends BaseBrowserBot {
     }
 
     const cookies = this.parseCookies(payload.cookies);
-    const browser = await this.getBrowser();
+    const browser = await this.getBrowser(payload.proxyUrl);
     let page: any;
 
     try {
@@ -315,7 +418,7 @@ export class FacebookAdapter extends BaseBrowserBot {
    */
   async addCommentToPost(payload: CommentPublishPayload) {
     const cookies = this.parseCookies(payload.cookies);
-    const browser = await this.getBrowser();
+    const browser = await this.getBrowser(payload.proxyUrl);
     let page: any;
 
     try {

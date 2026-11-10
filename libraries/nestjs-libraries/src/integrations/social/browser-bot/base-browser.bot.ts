@@ -29,9 +29,14 @@ export abstract class BaseBrowserBot {
   /**
    * Kết nối tới Browserless qua giao thức Chrome DevTools Protocol (CDP) WebSocket
    */
-  protected async getBrowser() {
+  protected async getBrowser(proxyUrl?: string) {
+    let ws = this.wsUrl;
+    if (proxyUrl) {
+      const sep = ws.includes('?') ? '&' : '?';
+      ws = `${ws}${sep}--proxy-server=${encodeURIComponent(proxyUrl)}`;
+    }
     return (puppeteer as any).connect({
-      browserWSEndpoint: this.wsUrl,
+      browserWSEndpoint: ws,
     });
   }
 

@@ -192,11 +192,11 @@ export function withContinueProvider<TItem, TSelection>(
       <div className="flex flex-col gap-[16px]">
         {/* Header with Title and Selected Counter */}
         <div className="flex items-center justify-between gap-[10px] flex-wrap">
-          <div className="text-[15px] font-[600] text-textColor">
+          <div className="text-[16px] font-[600] text-white">
             {t(titleKey, titleDefault)}
           </div>
           {filteredData.length > 0 && (
-            <div className="text-[12px] font-[500] px-[8px] py-[3px] rounded-full bg-newTextColor/5 text-textColor/70">
+            <div className="text-[12px] font-[500] px-[8px] py-[3px] rounded-full bg-white/10 text-white/90">
               {t('selected_channels_count', '{{selected}} of {{total}} selected', {
                 selected: selectedCount,
                 total: filteredData.length,
