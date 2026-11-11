@@ -20,6 +20,65 @@ export interface FacebookPagesResult {
   groups: FacebookGroupItem[];
 }
 
+/**
+ * Cấu hình CSS Selector tùy biến cho Facebook Bot.
+ * Mỗi trường nếu để trống sẽ fallback về giá trị mặc định trong DEFAULT_FACEBOOK_SELECTORS.
+ */
+export interface BotSelectorConfig {
+  // 1. Soạn bài trên Profile cá nhân
+  profileFeedBox?: string;    // Nút mở hộp thoại soạn bài trên Timeline
+  profileEditor?: string;     // Khung soạn thảo văn bản trong dialog
+  profileSubmit?: string;     // Nút Đăng (Post)
+  profileNextBtn?: string;    // Nút Tiếp (Next) nếu có màn hình chọn đối tượng
+
+  // 2. Soạn bài trong Nhóm (Group)
+  groupFeedBox?: string;      // Nút mở hộp thoại soạn bài trong Group
+  groupEditor?: string;       // Khung soạn thảo văn bản trong Group dialog
+  groupSubmit?: string;       // Nút Đăng trong Group
+
+  // 3. Tải lên Media (Ảnh/Video)
+  mediaInput?: string;        // Input file upload ẩn trong dialog
+
+  // 4. Bình luận đầu tiên (First Comment)
+  commentButton?: string;     // Nút mở bình luận trên bài viết
+  commentTextbox?: string;    // Ô nhập văn bản bình luận
+  commentSubmitBtn?: string;  // Nút gửi bình luận
+}
+
+/**
+ * Giá trị Selector mặc định toàn hệ thống — sử dụng khi kênh chưa có cấu hình tùy biến
+ */
+export const DEFAULT_FACEBOOK_SELECTORS: Required<BotSelectorConfig> = {
+  profileFeedBox: '[role="button"][aria-label*="Bạn đang nghĩ gì"], [role="button"][aria-label*="What\'s on your mind"]',
+  profileEditor: '[role="dialog"] [role="textbox"][contenteditable="true"]',
+  profileSubmit: '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"]',
+  profileNextBtn: '[role="dialog"] [aria-label="Tiếp"], [role="dialog"] [aria-label="Next"]',
+
+  groupFeedBox: '[role="button"][aria-label*="Bạn viết gì đi"], [role="button"][aria-label*="Write something"]',
+  groupEditor: '[role="dialog"] [role="textbox"][contenteditable="true"]',
+  groupSubmit: '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"]',
+
+  mediaInput: '[role="dialog"] input[type="file"][accept*="image"], [role="dialog"] input[type="file"][accept*="video"]',
+
+  commentButton: '[role="button"][aria-label*="Bình luận"], [role="button"][aria-label*="Comment"]',
+  commentTextbox: 'div[role="textbox"][contenteditable="true"][aria-label*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-label*="Comment"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Comment"]',
+  commentSubmitBtn: '[role="button"][aria-label="Bình luận"], [role="button"][aria-label="Comment"], [role="button"][aria-label="Gửi"], [role="button"][aria-label="Send"]',
+};
+
+/**
+ * Phân giải selector: Ưu tiên giá trị tùy biến từ BotSelectorConfig,
+ * nếu trống thì fallback về giá trị mặc định DEFAULT_FACEBOOK_SELECTORS
+ */
+export function resolveSelector(
+  customConfig: BotSelectorConfig | undefined,
+  key: keyof BotSelectorConfig
+): string {
+  if (customConfig && customConfig[key] && customConfig[key]!.trim()) {
+    return customConfig[key]!.trim();
+  }
+  return DEFAULT_FACEBOOK_SELECTORS[key];
+}
+
 export interface PostPublishPayload {
   cookies: string;
   message: string;
@@ -27,6 +86,7 @@ export interface PostPublishPayload {
   groupId?: string;
   audience?: 'public' | 'friends';
   proxyUrl?: string;
+  botConfig?: BotSelectorConfig; // Cấu hình selector tùy biến per-channel
 }
 
 export interface CommentPublishPayload {
@@ -35,6 +95,7 @@ export interface CommentPublishPayload {
   message: string;
   media?: Array<{ path: string; type?: string }>;
   proxyUrl?: string;
+  botConfig?: BotSelectorConfig; // Cấu hình selector tùy biến per-channel
 }
 
 export class FacebookAdapter extends BaseBrowserBot {
@@ -323,7 +384,7 @@ export class FacebookAdapter extends BaseBrowserBot {
   /**
    * Helper: Bấm nút Tiếp/Đăng và hoàn tất quá trình đăng bài trong Dialog
    */
-  private async submitPostInDialog(page: any) {
+  private async submitPostInDialog(page: any, botConfig?: BotSelectorConfig) {
     // Tìm và bấm nút Tiếp hoặc Đăng trong dialog
     const clickResult = await page.evaluate(() => {
       const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
@@ -358,8 +419,8 @@ export class FacebookAdapter extends BaseBrowserBot {
     });
 
     if (!clickResult || !clickResult.clicked) {
-      // Fallback click bằng selector thông thường
-      const submitBtn =
+      // Fallback click bằng selector tùy biến (nếu có) hoặc selector mặc định
+      const submitBtn = botConfig?.profileSubmit || botConfig?.groupSubmit ||
         '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"], [role="dialog"] [aria-label="Tiếp"], [role="dialog"] [aria-label="Next"]';
       await page.waitForSelector(submitBtn, { visible: true, timeout: 10000 });
       await page.click(submitBtn);
@@ -439,19 +500,20 @@ export class FacebookAdapter extends BaseBrowserBot {
       await this.randomDelay(1500, 2500);
 
       // Hộp thoại tạo bài viết hiện lên
-      const editorSelector = '[role="dialog"] [role="textbox"][contenteditable="true"]';
+      // Nhập nội dung bài viết — dùng selector tùy biến nếu có, fallback về mặc định
+      const editorSelector = resolveSelector(payload.botConfig, 'profileEditor');
       await page.waitForSelector(editorSelector, { timeout: 15000 });
       await this.typeHuman(page, editorSelector, payload.message);
 
       // Đính kèm ảnh/video nếu có
       if (payload.media?.length) {
-        await this.handleMediaUpload(page, payload.media);
+        await this.handleMediaUpload(page, payload.media, payload.botConfig);
       }
 
       await this.randomDelay(1000, 2000);
 
-      // Bấm nút Tiếp / Đăng
-      await this.submitPostInDialog(page);
+      // Bấm nút Tiếp / Đăng (sử dụng submitPostInDialog với botConfig)
+      await this.submitPostInDialog(page, payload.botConfig);
       await this.randomDelay(3000, 4000);
 
       // Cố gắng trích xuất permalink của bài viết vừa đăng trên Trang cá nhân
@@ -542,20 +604,20 @@ export class FacebookAdapter extends BaseBrowserBot {
       await this.triggerComposer(page, 'group');
       await this.randomDelay(1500, 2500);
 
-      // Nhập nội dung bài viết
-      const editorSelector = '[role="dialog"] [role="textbox"][contenteditable="true"]';
+      // Nhập nội dung bài viết — dùng selector tùy biến nếu có, fallback về mặc định
+      const editorSelector = resolveSelector(payload.botConfig, 'groupEditor');
       await page.waitForSelector(editorSelector, { timeout: 15000 });
       await this.typeHuman(page, editorSelector, payload.message);
 
       // Đính kèm file ảnh/video nếu có
       if (payload.media?.length) {
-        await this.handleMediaUpload(page, payload.media);
+        await this.handleMediaUpload(page, payload.media, payload.botConfig);
       }
 
       await this.randomDelay(1000, 2000);
 
-      // Bấm nút Đăng trong Group
-      await this.submitPostInDialog(page);
+      // Bấm nút Đăng trong Group (sử dụng submitPostInDialog với botConfig)
+      await this.submitPostInDialog(page, payload.botConfig);
       await this.randomDelay(3000, 4000);
 
       let postUrl = `https://www.facebook.com/groups/${payload.groupId}`;
@@ -793,8 +855,8 @@ export class FacebookAdapter extends BaseBrowserBot {
       }, isDirectPost);
 
       if (!focused) {
-        const fallbackSel =
-          'div[role="textbox"][contenteditable="true"][aria-label*="Bình luận"], div[role="textbox"][contenteditable="true"]';
+        // Fallback: dùng selector tùy biến hoặc mặc định
+        const fallbackSel = resolveSelector(payload.botConfig, 'commentTextbox');
         await page.waitForSelector(fallbackSel, { visible: true, timeout: 15000 });
         await page.focus(fallbackSel);
       }
@@ -813,8 +875,9 @@ export class FacebookAdapter extends BaseBrowserBot {
       await page.keyboard.press('Enter');
       await this.randomDelay(2500, 3500);
 
-      // Bấm nút Gửi (Send button / icon máy bay giấy) nếu có
-      await page.evaluate(() => {
+      // Bấm nút Gửi (Send button / icon máy bay giấy) nếu có — dùng selector tùy biến
+      const commentSubmitSel = resolveSelector(payload.botConfig, 'commentSubmitBtn');
+      await page.evaluate((submitSel: string) => {
         const sendBtns = Array.from(
           document.querySelectorAll('[role="button"]')
         ) as HTMLElement[];
@@ -830,7 +893,7 @@ export class FacebookAdapter extends BaseBrowserBot {
         if (sendBtn) {
           sendBtn.click();
         }
-      });
+      }, commentSubmitSel);
 
       await this.randomDelay(2000, 3000);
 
@@ -853,7 +916,7 @@ export class FacebookAdapter extends BaseBrowserBot {
   /**
    * Helper: Xử lý tải và đính kèm file media (ảnh/video) vào hộp thoại bài đăng
    */
-  private async handleMediaUpload(page: any, mediaList: Array<{ path: string }>) {
+  private async handleMediaUpload(page: any, mediaList: Array<{ path: string }>, botConfig?: BotSelectorConfig) {
     const filePaths: string[] = [];
     const uploadBase = process.env.UPLOAD_DIRECTORY || '/app/uploads';
 
@@ -869,8 +932,8 @@ export class FacebookAdapter extends BaseBrowserBot {
     }
 
     if (filePaths.length > 0) {
-      const fileInputSelector =
-        '[role="dialog"] input[type="file"][accept*="image"], [role="dialog"] input[type="file"][accept*="video"]';
+      // Dùng selector tùy biến nếu có, fallback về mặc định
+      const fileInputSelector = resolveSelector(botConfig, 'mediaInput');
       const fileInput = await page.$(fileInputSelector);
       if (fileInput) {
         await fileInput.uploadFile(...filePaths);

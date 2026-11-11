@@ -23,6 +23,7 @@ import { BotPicture } from '@gitroom/frontend/components/launches/bot.picture';
 import { CustomerModal } from '@gitroom/frontend/components/launches/customer.modal';
 import { Integration } from '@prisma/client';
 import { SettingsModal } from '@gitroom/frontend/components/launches/settings.modal';
+import { BotConfigModal } from '@gitroom/frontend/components/launches/bot.config.modal';
 import { CustomVariables } from '@gitroom/frontend/components/launches/add.provider.component';
 import { useRouter } from 'next/navigation';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
@@ -336,6 +337,25 @@ export const Menu: FC<{
     });
     setShow(false);
   }, [integrations, t]);
+  const openBotConfig = useCallback(() => {
+    const findIntegration = integrations.find(
+      (integration) => integration.id === id
+    );
+    modal.openModal({
+      title: 'Cấu hình DOM Selector',
+      children: (
+        <BotConfigModal
+          // @ts-ignore
+          integration={findIntegration}
+          onClose={() => {
+            mutate();
+            toast.show('Đã lưu cấu hình DOM Selector', 'success');
+          }}
+        />
+      ),
+    });
+    setShow(false);
+  }, [integrations]);
   const addToCustomer = useCallback(() => {
     const findIntegration = integrations.find(
       (integration) => integration.id === id
@@ -542,8 +562,7 @@ export const Menu: FC<{
             <div
               className="flex gap-[12px] items-center py-[8px] px-[10px]"
               onClick={additionalSettings}
-            >
-              <div>
+            >              <div>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="18"
@@ -560,6 +579,30 @@ export const Menu: FC<{
               <div className="text-[14px]">
                 {t('additional_settings', 'Additional Settings')}
               </div>
+            </div>
+          )}
+          {findIntegration?.providerIdentifier === 'facebook-personal' && (
+            <div
+              className="flex gap-[12px] items-center py-[8px] px-[10px]"
+              onClick={openBotConfig}
+            >
+              <div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </div>
+              <div className="text-[14px]">Cấu hình DOM Selector</div>
             </div>
           )}
           {(canChangeProfilePicture || canChangeNickName) && (

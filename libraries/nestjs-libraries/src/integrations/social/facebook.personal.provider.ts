@@ -9,7 +9,24 @@ import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashbo
 import { Integration } from '@prisma/client';
 import { FacebookPersonalDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/facebook.personal.dto';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
-import { FacebookAdapter } from './browser-bot/facebook.adapter';
+import { FacebookAdapter, BotSelectorConfig } from './browser-bot/facebook.adapter';
+
+/**
+ * Trích xuất cấu hình BotSelectorConfig từ trường additionalSettings của Integration.
+ * Trả về undefined nếu không có hoặc dữ liệu không hợp lệ.
+ */
+function extractBotConfig(integration: Integration): BotSelectorConfig | undefined {
+  if (!integration?.additionalSettings) return undefined;
+  try {
+    const parsed = JSON.parse(integration.additionalSettings);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.botConfig) {
+      return parsed.botConfig as BotSelectorConfig;
+    }
+  } catch {
+    // JSON parse lỗi → bỏ qua, dùng default
+  }
+  return undefined;
+}
 
 export class FacebookPersonalProvider
   extends SocialAbstract
@@ -194,6 +211,7 @@ export class FacebookPersonalProvider
     const [firstPost] = postDetails;
     const adapter = new FacebookAdapter();
 
+    const botConfig = extractBotConfig(integration);
     let result;
     if (integration.internalId === 'me') {
       // Đăng lên Trang cá nhân (Personal Profile)
@@ -202,6 +220,7 @@ export class FacebookPersonalProvider
         message: firstPost.message,
         media: firstPost.media || [],
         proxyUrl: integration.refreshToken || '',
+        botConfig,
       });
     } else {
       // Đăng vào Hội nhóm (Facebook Group)
@@ -211,6 +230,7 @@ export class FacebookPersonalProvider
         message: firstPost.message,
         media: firstPost.media || [],
         proxyUrl: integration.refreshToken || '',
+        botConfig,
       });
     }
 
@@ -241,6 +261,7 @@ export class FacebookPersonalProvider
   ): Promise<PostResponse[]> {
     const [commentPost] = postDetails;
     const adapter = new FacebookAdapter();
+    const botConfig = extractBotConfig(integration);
 
     const targetUrl =
       postId.startsWith('http')
@@ -255,6 +276,7 @@ export class FacebookPersonalProvider
       message: commentPost.message,
       media: commentPost.media || [],
       proxyUrl: integration.refreshToken || '',
+      botConfig,
     });
 
     return [

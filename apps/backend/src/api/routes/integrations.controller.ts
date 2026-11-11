@@ -37,6 +37,7 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { uniqBy } from 'lodash';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
+import { DEFAULT_FACEBOOK_SELECTORS } from '@gitroom/nestjs-libraries/integrations/social/browser-bot/facebook.adapter';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -158,6 +159,66 @@ export class IntegrationsController {
     }
 
     await this._integrationService.updateProviderSettings(org.id, id, body);
+  }
+
+  /**
+   * GET /:id/bot-config
+   * Trả về cấu hình BotSelectorConfig hiện tại và giá trị default để frontend hiển thị placeholder
+   */
+  @Get('/:id/bot-config')
+  async getBotConfig(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const integration = await this._integrationService.getIntegrationById(org.id, id);
+    if (!integration) throw new Error('Integration not found');
+
+    let customConfig: Record<string, string> = {};
+    if (integration.additionalSettings) {
+      try {
+        const parsed = JSON.parse(integration.additionalSettings);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.botConfig) {
+          customConfig = parsed.botConfig;
+        }
+      } catch {
+        // JSON không hợp lệ → trả về rỗng
+      }
+    }
+    return {
+      custom: customConfig,
+      defaults: DEFAULT_FACEBOOK_SELECTORS,
+      provider: integration.providerIdentifier,
+    };
+  }
+
+  /**
+   * PUT /:id/bot-config
+   * Lưu cấu hình BotSelectorConfig tùy biến vào additionalSettings
+   */
+  @Put('/:id/bot-config')
+  async updateBotConfig(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body() body: { botConfig: Record<string, string> }
+  ) {
+    const integration = await this._integrationService.getIntegrationById(org.id, id);
+    if (!integration) throw new Error('Integration not found');
+
+    let existingData: Record<string, unknown> = {};
+    if (integration.additionalSettings) {
+      try {
+        const parsed = JSON.parse(integration.additionalSettings);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          existingData = parsed;
+        }
+      } catch {
+        // JSON không hợp lệ → ghi đè
+      }
+    }
+    existingData.botConfig = body.botConfig || {};
+
+    await this._integrationService.updateProviderSettings(org.id, id, JSON.stringify(existingData));
+    return { success: true, botConfig: existingData.botConfig };
   }
   @Post('/:id/nickname')
   async setNickname(
