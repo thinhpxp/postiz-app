@@ -198,8 +198,12 @@ export abstract class BaseBrowserBot {
           if (res.ok) {
             const buffer = Buffer.from(await res.arrayBuffer());
             const ext = originalPath.split('?')[0].split('.').pop() || 'jpg';
+            const tmpDir = join('/uploads', 'tmp');
+            if (!existsSync(tmpDir)) {
+              mkdirSync(tmpDir, { recursive: true });
+            }
             const tmpPath = join(
-              '/tmp',
+              tmpDir,
               `bot_upload_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
             );
             writeFileSync(tmpPath, buffer);

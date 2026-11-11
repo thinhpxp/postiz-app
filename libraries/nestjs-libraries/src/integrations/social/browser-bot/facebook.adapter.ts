@@ -58,7 +58,7 @@ export const DEFAULT_FACEBOOK_SELECTORS: Required<BotSelectorConfig> = {
   groupEditor: '[role="dialog"] [role="textbox"][contenteditable="true"]',
   groupSubmit: '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"]',
 
-  mediaInput: '[role="dialog"] input[type="file"][accept*="image"], [role="dialog"] input[type="file"][accept*="video"], [role="dialog"] input[type="file"], input[type="file"][accept*="image"]',
+  mediaInput: '[role="dialog"] input[type="file"], input[type="file"]',
 
   commentButton: '[role="button"][aria-label*="Bình luận"], [role="button"][aria-label*="Comment"]',
   commentTextbox: 'div[role="textbox"][contenteditable="true"][aria-label*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-label*="Comment"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Comment"]',
@@ -503,7 +503,16 @@ export class FacebookAdapter extends BaseBrowserBot {
       // Nhập nội dung bài viết — dùng selector tùy biến nếu có, fallback về mặc định
       const editorSelector = resolveSelector(payload.botConfig, 'profileEditor');
       await page.waitForSelector(editorSelector, { timeout: 15000 });
+      await this.randomDelay(500, 1000);
       await this.typeHuman(page, editorSelector, payload.message);
+      await this.randomDelay(500, 800);
+
+      // Kiểm tra text đã nhập chưa (debug)
+      const typedText = await page.evaluate((sel: string) => {
+        const el = document.querySelector(sel);
+        return el ? (el as HTMLElement).innerText || (el as HTMLElement).textContent || '' : 'NOT_FOUND';
+      }, editorSelector);
+      console.log('[FacebookAdapter] Text đã nhập vào editor:', typedText.substring(0, 50));
 
       // Đính kèm ảnh/video nếu có
       if (payload.media?.length) {
@@ -925,36 +934,40 @@ export class FacebookAdapter extends BaseBrowserBot {
       return;
     }
 
-    let fileInputSelector = resolveSelector(botConfig, 'mediaInput');
-    if (!fileInputSelector.includes('input')) {
-      console.warn(`[FacebookAdapter] mediaInput không phải thẻ input ("${fileInputSelector}"), dùng mặc định`);
-      fileInputSelector = DEFAULT_FACEBOOK_SELECTORS.mediaInput;
-    }
+    console.log('[FacebookAdapter] Chuẩn bị upload media, số file:', filePaths.length, filePaths);
 
-    let fileInput = await page.$(fileInputSelector);
+    // Tìm input file trong dialog (Facebook đã có sẵn input ẩn trong dialog)
+    let fileInput = await page.$('[role="dialog"] input[type="file"]');
     if (!fileInput) {
-      // Thử bấm nút "Ảnh/video" trong dialog để kích hoạt mở vùng chọn file
-      const addMediaBtn = await page.$(
-        '[role="dialog"] [aria-label*="Ảnh/video"], [role="dialog"] [aria-label*="Photo/video"], [role="dialog"] [aria-label*="Ảnh"], [role="dialog"] [aria-label*="Photo"]'
-      );
-      if (addMediaBtn) {
-        await addMediaBtn.click().catch(() => {});
-        await this.randomDelay(1500, 2500);
-        fileInput = await page.$(fileInputSelector);
-      }
+      const customSelector = resolveSelector(botConfig, 'mediaInput');
+      fileInput = await page.$(customSelector);
     }
-
     if (!fileInput) {
-      // Fallback tìm input[type="file"] trong dialog hoặc trang
-      fileInput = await page.$('[role="dialog"] input[type="file"], input[type="file"]');
+      fileInput = await page.$('input[type="file"]');
     }
 
     if (fileInput) {
       console.log('[FacebookAdapter] Đang upload file:', filePaths);
-      await fileInput.uploadFile(...filePaths);
-      await this.randomDelay(4000, 6000); // Chờ render preview ảnh
+      try {
+        await fileInput.uploadFile(...filePaths);
+        console.log('[FacebookAdapter] uploadFile() hoàn tất, chờ preview...');
+        
+        // Chờ preview ảnh xuất hiện (tối đa 15s)
+        await page.waitForFunction(() => {
+          const dialog = document.querySelector('[role="dialog"]');
+          if (!dialog) return false;
+          const imgs = Array.from(dialog.querySelectorAll('img'));
+          return imgs.some(i => i.src && i.src.startsWith('blob:'));
+        }, { timeout: 15000 }).catch(() => {
+          console.warn('[FacebookAdapter] Hết thời gian chờ blob preview, tiếp tục...');
+        });
+
+        await this.randomDelay(2000, 3000);
+      } catch (uploadErr) {
+        console.error('[FacebookAdapter] Lỗi uploadFile():', uploadErr);
+      }
     } else {
-      console.warn('[FacebookAdapter] Không tìm thấy input file upload:', fileInputSelector);
+      console.warn('[FacebookAdapter] Không tìm thấy input file upload trong dialog');
     }
   }
 }
