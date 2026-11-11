@@ -164,10 +164,14 @@ export class FacebookPersonalProvider
         : `Trang cá nhân (${integration.name})`
       : `Trang cá nhân (ID: ${cUser})`;
 
+    // ID duy nhất cho từng Trang cá nhân dựa trên c_user (ví dụ: profile_100002181601679)
+    // Giúp lưu được nhiều Trang cá nhân khác nhau mà không bị đè internalId 'me'
+    const profileId = cUser && cUser !== 'me' ? `profile_${cUser}` : 'me';
+
     return [
       // Kênh Trang cá nhân
       {
-        id: 'me',
+        id: profileId,
         name: profileName,
         picture: finalProfilePicture,
       },
@@ -188,11 +192,12 @@ export class FacebookPersonalProvider
     data: { id?: string; page?: string; name?: string; picture?: string }
   ) {
     const targetId = data.id || data.page || 'me';
+    const isProfile = targetId === 'me' || targetId.startsWith('profile_');
     return {
-      id: targetId, // 'me' hoặc group ID
+      id: targetId, // 'profile_<c_user>' hoặc group ID
       name:
         data.name ||
-        (targetId === 'me' ? 'Facebook Profile' : `FB Group ${targetId}`),
+        (isProfile ? 'Facebook Profile' : `FB Group ${targetId}`),
       access_token: accessToken,
       picture: data.picture || '',
       username: targetId,
@@ -212,8 +217,12 @@ export class FacebookPersonalProvider
     const adapter = new FacebookAdapter();
 
     const botConfig = extractBotConfig(integration);
+    const isProfile =
+      integration.internalId === 'me' ||
+      integration.internalId.startsWith('profile_');
+
     let result;
-    if (integration.internalId === 'me') {
+    if (isProfile) {
       // Đăng lên Trang cá nhân (Personal Profile)
       result = await adapter.publishToProfile({
         cookies: accessToken,
@@ -224,9 +233,10 @@ export class FacebookPersonalProvider
       });
     } else {
       // Đăng vào Hội nhóm (Facebook Group)
+      const groupId = integration.internalId.replace('group_', '');
       result = await adapter.publishToGroup({
         cookies: accessToken,
-        groupId: integration.internalId,
+        groupId,
         message: firstPost.message,
         media: firstPost.media || [],
         proxyUrl: integration.refreshToken || '',
@@ -240,9 +250,9 @@ export class FacebookPersonalProvider
         postId: result.url || result.postId,
         releaseURL:
           result.url ||
-          (integration.internalId === 'me'
+          (isProfile
             ? 'https://www.facebook.com/me'
-            : `https://www.facebook.com/groups/${integration.internalId}`),
+            : `https://www.facebook.com/groups/${integration.internalId.replace('group_', '')}`),
         status: result.status,
       },
     ];
@@ -263,12 +273,16 @@ export class FacebookPersonalProvider
     const adapter = new FacebookAdapter();
     const botConfig = extractBotConfig(integration);
 
+    const isProfile =
+      integration.internalId === 'me' ||
+      integration.internalId.startsWith('profile_');
+
     const targetUrl =
       postId.startsWith('http')
         ? postId
-        : integration.internalId === 'me'
+        : isProfile
         ? 'https://www.facebook.com/me'
-        : `https://www.facebook.com/groups/${integration.internalId}`;
+        : `https://www.facebook.com/groups/${integration.internalId.replace('group_', '')}`;
 
     const result = await adapter.addCommentToPost({
       cookies: accessToken,
