@@ -129,6 +129,7 @@ export class IntegrationsController {
             stripLinks: !!findIntegration?.stripLinks?.(),
             picture: p.picture || '/no-picture.jpg',
             identifier: p.providerIdentifier,
+            providerIdentifier: p.providerIdentifier,
             inBetweenSteps: p.inBetweenSteps,
             refreshNeeded: p.refreshNeeded,
             isCustomFields: !!findIntegration.customFields,
