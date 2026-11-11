@@ -58,7 +58,7 @@ export const DEFAULT_FACEBOOK_SELECTORS: Required<BotSelectorConfig> = {
   groupEditor: '[role="dialog"] [role="textbox"][contenteditable="true"]',
   groupSubmit: '[role="dialog"] [aria-label="Đăng"], [role="dialog"] [aria-label="Post"]',
 
-  mediaInput: '[role="dialog"] input[type="file"][accept*="image"], [role="dialog"] input[type="file"][accept*="video"]',
+  mediaInput: '[role="dialog"] input[type="file"][accept*="image"], [role="dialog"] input[type="file"][accept*="video"], [role="dialog"] input[type="file"], input[type="file"][accept*="image"]',
 
   commentButton: '[role="button"][aria-label*="Bình luận"], [role="button"][aria-label*="Comment"]',
   commentTextbox: 'div[role="textbox"][contenteditable="true"][aria-label*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-label*="Comment"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Bình luận"], div[role="textbox"][contenteditable="true"][aria-placeholder*="Comment"]',
@@ -917,28 +917,44 @@ export class FacebookAdapter extends BaseBrowserBot {
    * Helper: Xử lý tải và đính kèm file media (ảnh/video) vào hộp thoại bài đăng
    */
   private async handleMediaUpload(page: any, mediaList: Array<{ path: string }>, botConfig?: BotSelectorConfig) {
-    const filePaths: string[] = [];
-    const uploadBase = process.env.UPLOAD_DIRECTORY || '/app/uploads';
+    if (!mediaList || mediaList.length === 0) return;
 
-    for (const m of mediaList) {
-      let resolvedPath = m.path;
-      // Nếu là đường dẫn tương đối hoặc URL cục bộ của Postiz
-      if (!resolvedPath.startsWith('/') && !resolvedPath.startsWith('http')) {
-        resolvedPath = join(uploadBase, resolvedPath);
-      }
-      if (existsSync(resolvedPath)) {
-        filePaths.push(resolvedPath);
+    const filePaths = await this.resolveMediaFiles(mediaList);
+    if (filePaths.length === 0) {
+      console.warn('[FacebookAdapter] Không tìm thấy file media hợp lệ nào trên ổ đĩa từ mediaList:', mediaList);
+      return;
+    }
+
+    let fileInputSelector = resolveSelector(botConfig, 'mediaInput');
+    if (!fileInputSelector.includes('input')) {
+      console.warn(`[FacebookAdapter] mediaInput không phải thẻ input ("${fileInputSelector}"), dùng mặc định`);
+      fileInputSelector = DEFAULT_FACEBOOK_SELECTORS.mediaInput;
+    }
+
+    let fileInput = await page.$(fileInputSelector);
+    if (!fileInput) {
+      // Thử bấm nút "Ảnh/video" trong dialog để kích hoạt mở vùng chọn file
+      const addMediaBtn = await page.$(
+        '[role="dialog"] [aria-label*="Ảnh/video"], [role="dialog"] [aria-label*="Photo/video"], [role="dialog"] [aria-label*="Ảnh"], [role="dialog"] [aria-label*="Photo"]'
+      );
+      if (addMediaBtn) {
+        await addMediaBtn.click().catch(() => {});
+        await this.randomDelay(1500, 2500);
+        fileInput = await page.$(fileInputSelector);
       }
     }
 
-    if (filePaths.length > 0) {
-      // Dùng selector tùy biến nếu có, fallback về mặc định
-      const fileInputSelector = resolveSelector(botConfig, 'mediaInput');
-      const fileInput = await page.$(fileInputSelector);
-      if (fileInput) {
-        await fileInput.uploadFile(...filePaths);
-        await this.randomDelay(3000, 5000); // Chờ render preview ảnh
-      }
+    if (!fileInput) {
+      // Fallback tìm input[type="file"] trong dialog hoặc trang
+      fileInput = await page.$('[role="dialog"] input[type="file"], input[type="file"]');
+    }
+
+    if (fileInput) {
+      console.log('[FacebookAdapter] Đang upload file:', filePaths);
+      await fileInput.uploadFile(...filePaths);
+      await this.randomDelay(4000, 6000); // Chờ render preview ảnh
+    } else {
+      console.warn('[FacebookAdapter] Không tìm thấy input file upload:', fileInputSelector);
     }
   }
 }

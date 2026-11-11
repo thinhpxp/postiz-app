@@ -145,6 +145,76 @@ export abstract class BaseBrowserBot {
   }
 
   /**
+   * Phân giải danh sách file media (ảnh/video) sang đường dẫn cục bộ trên ổ đĩa.
+   * Hỗ trợ:
+   * 1. Đường dẫn cục bộ tuyệt đối hoặc tương đối (/uploads/..., uploads/...)
+   * 2. URL cục bộ Postiz (https://post.thinhpxp.io.vn/uploads/...) -> map sang file trên đĩa
+   * 3. URL từ xa (http/https) -> tự động tải về /tmp để nạp vào browser
+   */
+  public async resolveMediaFiles(mediaList: Array<{ path: string }>): Promise<string[]> {
+    if (!mediaList || !Array.isArray(mediaList)) return [];
+
+    const uploadBase = process.env.UPLOAD_DIRECTORY || '/uploads';
+    const resolved: string[] = [];
+
+    for (const item of mediaList) {
+      if (!item?.path) continue;
+      const originalPath = item.path;
+
+      // 1. Kiểm tra nếu là URL nội bộ /uploads/...
+      let relativeUploadPath = '';
+      const uploadsMatch = originalPath.match(/\/uploads\/(.+)$/);
+      if (uploadsMatch) {
+        relativeUploadPath = uploadsMatch[1];
+      }
+
+      const candidates = [
+        originalPath,
+        relativeUploadPath ? join('/uploads', relativeUploadPath) : '',
+        relativeUploadPath ? join(uploadBase, relativeUploadPath) : '',
+        relativeUploadPath ? join('/app/uploads', relativeUploadPath) : '',
+        join('/uploads', originalPath),
+        join(uploadBase, originalPath),
+        join('/app/uploads', originalPath),
+      ].filter(Boolean);
+
+      let found = '';
+      for (const c of candidates) {
+        if (!c.startsWith('http://') && !c.startsWith('https://') && existsSync(c)) {
+          found = c;
+          break;
+        }
+      }
+
+      if (found) {
+        resolved.push(found);
+        continue;
+      }
+
+      // 2. Nếu là URL http/https mà không tìm thấy local, tải về /tmp
+      if (originalPath.startsWith('http://') || originalPath.startsWith('https://')) {
+        try {
+          const res = await fetch(originalPath);
+          if (res.ok) {
+            const buffer = Buffer.from(await res.arrayBuffer());
+            const ext = originalPath.split('?')[0].split('.').pop() || 'jpg';
+            const tmpPath = join(
+              '/tmp',
+              `bot_upload_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
+            );
+            writeFileSync(tmpPath, buffer);
+            resolved.push(tmpPath);
+          }
+        } catch (err) {
+          console.error('[BaseBrowserBot] Lỗi tải media URL:', originalPath, err);
+        }
+      }
+    }
+
+    return resolved;
+  }
+
+  /**
    * Chụp ảnh màn hình lưu lại khi có lỗi xảy ra để Admin dễ chẩn đoán sự cố
    */
   protected async captureErrorScreenshot(page: any, prefix = 'error'): Promise<string> {

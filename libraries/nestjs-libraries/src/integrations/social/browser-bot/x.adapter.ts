@@ -304,37 +304,34 @@ export class XAdapter extends BaseBrowserBot {
   ) {
     if (!mediaList || mediaList.length === 0) return;
 
-    const fileInputSelector = resolveXSelector(botConfig, 'mediaInput');
-    const fileInput = await page.$(fileInputSelector);
+    const validPaths = await this.resolveMediaFiles(mediaList);
+    if (validPaths.length === 0) {
+      console.warn('[XAdapter] Không tìm thấy file media hợp lệ nào trên ổ đĩa từ mediaList:', mediaList);
+      return;
+    }
+
+    let fileInputSelector = resolveXSelector(botConfig, 'mediaInput');
+    // Nếu người dùng lỡ chọn button/svg thay vì input, tự động fallback về input chuẩn của X
+    if (!fileInputSelector.includes('input')) {
+      console.warn(`[XAdapter] mediaInput không phải thẻ input ("${fileInputSelector}"), tự động dùng input chuẩn`);
+      fileInputSelector = 'input[data-testid="fileInput"], input[type="file"]';
+    }
+
+    let fileInput = await page.$(fileInputSelector);
+    if (!fileInput) {
+      // Fallback tìm input[type="file"] trên trang
+      fileInput = await page.$('input[data-testid="fileInput"], input[type="file"][accept*="image"], input[type="file"]');
+    }
 
     if (!fileInput) {
       console.warn('[XAdapter] Không tìm thấy input file upload:', fileInputSelector);
       return;
     }
 
-    const uploadBase = process.env.UPLOAD_DIRECTORY || '/app/uploads';
-    const validPaths: string[] = [];
-
-    for (const item of mediaList) {
-      const candidates = [
-        item.path,
-        join(uploadBase, item.path),
-        join('/app/apps/backend/uploads', item.path),
-        join(process.cwd(), 'uploads', item.path),
-      ];
-      for (const p of candidates) {
-        if (existsSync(p)) {
-          validPaths.push(p);
-          break;
-        }
-      }
-    }
-
-    if (validPaths.length > 0) {
-      await fileInput.uploadFile(...validPaths);
-      // Chờ ảnh / video render preview
-      await this.randomDelay(4000, 6000);
-    }
+    console.log('[XAdapter] Đang nạp media vào browser:', validPaths);
+    await fileInput.uploadFile(...validPaths);
+    // Chờ ảnh / video render preview trên giao diện X
+    await this.randomDelay(4000, 6000);
   }
 }
 
