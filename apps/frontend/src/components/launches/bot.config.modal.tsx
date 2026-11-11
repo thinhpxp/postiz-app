@@ -68,13 +68,7 @@ export const BotConfigModal: FC<{
   integration: Integration & { customer?: { id: string; name: string } };
   onClose: () => void;
 }> = (props) => {
-  const isX =
-    integration?.providerIdentifier === 'x-personal' ||
-    (integration as any)?.identifier === 'x-personal' ||
-    data?.provider === 'x-personal';
-
-  const selectorGroups = isX ? X_SELECTOR_FIELDS : FB_SELECTOR_FIELDS;
-  const platformName = isX ? 'X (Twitter)' : 'Facebook';
+  const { integration, onClose } = props;
   const fetch = useFetch();
   const modal = useModals();
 
@@ -83,6 +77,14 @@ export const BotConfigModal: FC<{
   const [data, setData] = useState<BotConfigData | null>(null);
   // values: giá trị người dùng đang nhập (rỗng = dùng default)
   const [values, setValues] = useState<Partial<Record<SelectorKey, string>>>({});
+
+  const isX =
+    integration?.providerIdentifier === 'x-personal' ||
+    (integration as any)?.identifier === 'x-personal' ||
+    data?.provider === 'x-personal';
+
+  const selectorGroups = isX ? X_SELECTOR_FIELDS : FB_SELECTOR_FIELDS;
+  const platformName = isX ? 'X (Twitter)' : 'Facebook';
 
   /** Load cấu hình hiện tại từ server */
   const loadConfig = useCallback(async () => {
