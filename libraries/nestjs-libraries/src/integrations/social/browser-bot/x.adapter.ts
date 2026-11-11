@@ -170,12 +170,12 @@ export class XAdapter extends BaseBrowserBot {
 
       const editorSelector = resolveXSelector(payload.botConfig, 'tweetEditor');
       await page.waitForSelector(editorSelector, { timeout: 20000 });
-      await this.humanDelay(1000, 2000);
+      await this.randomDelay(1000, 2000);
 
       // Focus và nhập nội dung bài viết
       await page.click(editorSelector);
-      await this.humanType(page, editorSelector, payload.message);
-      await this.humanDelay(1500, 2500);
+      await this.typeHuman(page, editorSelector, payload.message);
+      await this.randomDelay(1500, 2500);
 
       // Tải lên media nếu có
       if (payload.media && payload.media.length > 0) {
@@ -200,7 +200,7 @@ export class XAdapter extends BaseBrowserBot {
       );
 
       await page.click(submitSelector);
-      await this.humanDelay(3000, 5000);
+      await this.randomDelay(3000, 5000);
 
       // Kiểm tra toast thông báo gửi thành công hoặc lấy link bài viết
       let tweetUrl = '';
@@ -256,12 +256,12 @@ export class XAdapter extends BaseBrowserBot {
 
       const replySelector = resolveXSelector(payload.botConfig, 'replyEditor');
       await page.waitForSelector(replySelector, { timeout: 25000 });
-      await this.humanDelay(1000, 2000);
+      await this.randomDelay(1000, 2000);
 
       // Focus và nhập reply
       await page.click(replySelector);
-      await this.humanType(page, replySelector, payload.message);
-      await this.humanDelay(1500, 2500);
+      await this.typeHuman(page, replySelector, payload.message);
+      await this.randomDelay(1500, 2500);
 
       // Upload media nếu có
       if (payload.media && payload.media.length > 0) {
@@ -282,7 +282,7 @@ export class XAdapter extends BaseBrowserBot {
       );
 
       await page.click(submitSelector);
-      await this.humanDelay(3000, 5000);
+      await this.randomDelay(3000, 5000);
 
       return {
         commentId: String(Date.now()),
@@ -333,7 +333,8 @@ export class XAdapter extends BaseBrowserBot {
     if (validPaths.length > 0) {
       await fileInput.uploadFile(...validPaths);
       // Chờ ảnh / video render preview
-      await this.humanDelay(4000, 6000);
+      await this.randomDelay(4000, 6000);
     }
   }
 }
+

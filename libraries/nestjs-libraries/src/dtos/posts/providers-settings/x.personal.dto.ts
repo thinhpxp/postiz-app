@@ -31,3 +31,4 @@ export class XPersonalDto {
   @IsBoolean()
   paid_partnership?: boolean;
 }
+
