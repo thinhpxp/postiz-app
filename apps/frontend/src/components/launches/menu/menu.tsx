@@ -588,8 +588,8 @@ export const Menu: FC<{
               </div>
             </div>
           )}
-          {(findIntegration?.identifier === 'facebook-personal' ||
-            findIntegration?.providerIdentifier === 'facebook-personal') && (
+          {(['facebook-personal', 'x-personal'].includes(findIntegration?.identifier) ||
+            ['facebook-personal', 'x-personal'].includes(findIntegration?.providerIdentifier)) && (
             <div
               className="flex gap-[12px] items-center py-[8px] px-[10px]"
               onClick={openBotConfig}

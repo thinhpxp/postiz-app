@@ -21,6 +21,7 @@ import { GmbSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-s
 import { FarcasterDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/farcaster.dto';
 import { FacebookDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/facebook.dto';
 import { FacebookPersonalDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/facebook.personal.dto';
+import { XPersonalDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/x.personal.dto';
 import { MoltbookDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/moltbook.dto';
 import { SkoolDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/skool.dto';
 import { WhopDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/whop.dto';
@@ -53,6 +54,7 @@ export type AllProvidersSettings =
   | ProviderExtension<'gmb', GmbSettingsDto>
   | ProviderExtension<'facebook', FacebookDto>
   | ProviderExtension<'facebook-personal', FacebookPersonalDto>
+  | ProviderExtension<'x-personal', XPersonalDto>
   | ProviderExtension<'wrapcast', FarcasterDto>
   | ProviderExtension<'threads', None>
   | ProviderExtension<'mastodon', None>
@@ -95,6 +97,7 @@ export const allProviders = (setEmpty?: any) => {
     { value: FarcasterDto, name: 'wrapcast' },
     { value: FacebookDto, name: 'facebook' },
     { value: FacebookPersonalDto, name: 'facebook-personal' },
+    { value: XPersonalDto, name: 'x-personal' },
     { value: setEmpty, name: 'threads' },
     { value: setEmpty, name: 'mastodon' },
     { value: setEmpty, name: 'bluesky' },

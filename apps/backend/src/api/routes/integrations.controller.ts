@@ -38,6 +38,7 @@ import {
 import { uniqBy } from 'lodash';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { DEFAULT_FACEBOOK_SELECTORS } from '@gitroom/nestjs-libraries/integrations/social/browser-bot/facebook.adapter';
+import { DEFAULT_X_SELECTORS } from '@gitroom/nestjs-libraries/integrations/social/browser-bot/x.adapter';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -185,9 +186,14 @@ export class IntegrationsController {
         // JSON không hợp lệ → trả về rỗng
       }
     }
+    const defaults =
+      integration.providerIdentifier === 'x-personal'
+        ? DEFAULT_X_SELECTORS
+        : DEFAULT_FACEBOOK_SELECTORS;
+
     return {
       custom: customConfig,
-      defaults: DEFAULT_FACEBOOK_SELECTORS,
+      defaults,
       provider: integration.providerIdentifier,
     };
   }

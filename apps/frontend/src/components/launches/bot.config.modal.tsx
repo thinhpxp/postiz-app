@@ -7,8 +7,8 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { Button } from '@gitroom/react/form/button';
 import { Integration } from '@prisma/client';
 
-/** Danh sách các trường selector hiển thị trong form */
-const SELECTOR_FIELDS = [
+/** Danh sách selector cho Facebook */
+const FB_SELECTOR_FIELDS = [
   {
     group: 'Trang cá nhân (Profile)',
     fields: [
@@ -37,14 +37,30 @@ const SELECTOR_FIELDS = [
   },
 ] as const;
 
-type SelectorKey =
-  | 'profileFeedBox' | 'profileEditor' | 'profileSubmit' | 'profileNextBtn'
-  | 'groupFeedBox' | 'groupEditor' | 'groupSubmit'
-  | 'mediaInput' | 'commentButton' | 'commentTextbox' | 'commentSubmitBtn';
+/** Danh sách selector cho X / Twitter */
+const X_SELECTOR_FIELDS = [
+  {
+    group: 'Soạn Tweet',
+    fields: [
+      { key: 'tweetEditor', label: 'Khung soạn thảo Tweet' },
+      { key: 'tweetSubmit', label: 'Nút Đăng Tweet' },
+      { key: 'mediaInput', label: 'Input tải ảnh / video' },
+    ],
+  },
+  {
+    group: 'Bình luận / Trả lời (Reply)',
+    fields: [
+      { key: 'replyEditor', label: 'Khung soạn thảo Reply' },
+      { key: 'replySubmit', label: 'Nút gửi Reply' },
+    ],
+  },
+] as const;
+
+type SelectorKey = string;
 
 interface BotConfigData {
-  custom: Partial<Record<SelectorKey, string>>;
-  defaults: Record<SelectorKey, string>;
+  custom: Partial<Record<string, string>>;
+  defaults: Record<string, string>;
   provider: string;
 }
 
@@ -52,7 +68,13 @@ export const BotConfigModal: FC<{
   integration: Integration & { customer?: { id: string; name: string } };
   onClose: () => void;
 }> = (props) => {
-  const { integration, onClose } = props;
+  const isX =
+    integration?.providerIdentifier === 'x-personal' ||
+    (integration as any)?.identifier === 'x-personal' ||
+    data?.provider === 'x-personal';
+
+  const selectorGroups = isX ? X_SELECTOR_FIELDS : FB_SELECTOR_FIELDS;
+  const platformName = isX ? 'X (Twitter)' : 'Facebook';
   const fetch = useFetch();
   const modal = useModals();
 
@@ -125,7 +147,7 @@ export const BotConfigModal: FC<{
 
       {/* Banner hướng dẫn */}
       <div className="bg-blue-900/30 border border-blue-500/40 rounded p-3 text-[13px] text-blue-200">
-        <strong>Hướng dẫn:</strong> Để lấy CSS Selector đúng, mở Facebook trong Chrome → F12 (DevTools)
+        <strong>Hướng dẫn:</strong> Để lấy CSS Selector đúng, mở {platformName} trong Chrome → F12 (DevTools)
         → chọn tab <strong>Elements</strong> → click chuột phải vào phần tử → <strong>Copy → Copy selector</strong>.
         Để trống ô nào thì hệ thống dùng selector mặc định cho ô đó.
       </div>
@@ -134,13 +156,13 @@ export const BotConfigModal: FC<{
         <div className="text-center py-8 text-textColor/60">Đang tải cấu hình...</div>
       ) : (
         <div className="flex flex-col gap-[16px] max-h-[60vh] overflow-y-auto pr-1">
-          {SELECTOR_FIELDS.map((group) => (
+          {selectorGroups.map((group) => (
             <div key={group.group} className="flex flex-col gap-[8px]">
               <div className="text-[14px] font-semibold text-textColor border-b border-tableBorder pb-1">
                 {group.group}
               </div>
               {group.fields.map((field) => {
-                const key = field.key as SelectorKey;
+                const key = field.key;
                 const defaultVal = data?.defaults[key] ?? '';
                 const currentVal = values[key] ?? '';
                 return (
