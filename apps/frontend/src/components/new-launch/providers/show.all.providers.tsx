@@ -2,6 +2,7 @@
 
 import DevtoProvider from '@gitroom/frontend/components/new-launch/providers/devto/devto.provider';
 import XProvider from '@gitroom/frontend/components/new-launch/providers/x/x.provider';
+import XPersonalProvider from '@gitroom/frontend/components/new-launch/providers/x/x.personal.provider';
 import LinkedinProvider from '@gitroom/frontend/components/new-launch/providers/linkedin/linkedin.provider';
 import RedditProvider from '@gitroom/frontend/components/new-launch/providers/reddit/reddit.provider';
 import MediumProvider from '@gitroom/frontend/components/new-launch/providers/medium/medium.provider';
@@ -49,6 +50,10 @@ export const Providers = [
   {
     identifier: 'x',
     component: XProvider,
+  },
+  {
+    identifier: 'x-personal',
+    component: XPersonalProvider,
   },
   {
     identifier: 'linkedin',
@@ -204,17 +209,41 @@ export const ShowAllProviders = forwardRef((props, ref) => {
   useImperativeHandle(ref, () => ({
     checkAllValid: async () => {
       return Promise.all(
-        selectedIntegrations.map(async (p) => await p.ref?.current.isValid())
+        selectedIntegrations.map(async (p) => {
+          if (!p.ref?.current?.isValid) {
+            return {
+              id: p.integration.id,
+              identifier: p.integration.identifier,
+              integration: p.integration,
+              valid: true,
+              err: {},
+              settings: {},
+              values: [],
+              maximumCharacters: 280,
+            };
+          }
+          return await p.ref.current.isValid();
+        })
       );
     },
     getAllValues: async () => {
       return Promise.all(
-        selectedIntegrations.map(async (p) => await p.ref?.current.getValues())
+        selectedIntegrations.map(async (p) => {
+          if (!p.ref?.current?.getValues) {
+            return {
+              id: p.integration.id,
+              identifier: p.integration.identifier,
+              values: [],
+              settings: {},
+            };
+          }
+          return await p.ref.current.getValues();
+        })
       );
     },
     triggerAll: () => {
       return selectedIntegrations.map(
-        async (p) => await p.ref?.current.trigger()
+        async (p) => await p.ref?.current?.trigger?.()
       );
     },
   }));

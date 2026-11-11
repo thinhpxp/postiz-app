@@ -553,7 +553,15 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       // Pull the local values to build the payload, but rely on the server
       // (`/posts/valid`) for the actual validation — checkValidity now lives
       // server-side so it can't be bypassed.
-      const allValues = await ref.current.getAllValues();
+      let allValues: any[];
+      try {
+        allValues = await ref.current.getAllValues();
+      } catch (err) {
+        console.error('Error fetching values from providers:', err);
+        setLoading(false);
+        toaster.show(t('post_save_failed', 'Could not save the post'), 'danger');
+        return;
+      }
 
       const integrationById = (id: string) =>
         selectedIntegrations.find((p) => p.integration.id === id);
