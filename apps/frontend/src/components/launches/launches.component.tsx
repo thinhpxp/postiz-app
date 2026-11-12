@@ -281,12 +281,8 @@ export const MenuGroupComponent: FC<
           </div>
           <div
             className="line-clamp-1"
-            {...(collapsed
-              ? {
-                  'data-tooltip-id': 'tooltip',
-                  'data-tooltip-content': group.name,
-                }
-              : {})}
+            data-tooltip-id="tooltip"
+            data-tooltip-content={group.name}
           >
             {group.name}
           </div>
@@ -432,7 +428,10 @@ export const MenuComponent: FC<
                 'This channel is disabled, please upgrade your plan to enable it.'
               ),
             }
-          : {})}
+          : {
+              'data-tooltip-id': 'tooltip',
+              'data-tooltip-content': integration.name,
+            })}
         role="Handle"
         className={clsx(
           'group-[.sidebar]:hidden flex-1 whitespace-nowrap text-ellipsis overflow-hidden cursor-move',
@@ -471,6 +470,62 @@ export const LaunchesComponent = () => {
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const [channelsOpen, setChannelsOpen] = useState(false);
   const [mode] = useCookie('mode', 'dark');
+  const [channelsWidthCookie, setChannelsWidthCookie] = useCookie(
+    'channelsWidth',
+    '260'
+  );
+  const [channelsWidth, setChannelsWidth] = useState<number>(() => {
+    const parsed = parseInt(channelsWidthCookie, 10);
+    return !isNaN(parsed) && parsed >= 220 ? Math.min(600, parsed) : 260;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+    const parsed = parseInt(channelsWidthCookie, 10);
+    if (!isNaN(parsed) && parsed >= 220) {
+      setChannelsWidth(Math.min(600, parsed));
+    }
+  }, [channelsWidthCookie]);
+
+  const startResizing = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsResizing(true);
+      const startX = e.clientX;
+      const startWidth = channelsWidth;
+      const isRtl = document.documentElement.dir === 'rtl';
+      let lastWidth = startWidth;
+
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        const deltaX = isRtl
+          ? startX - moveEvent.clientX
+          : moveEvent.clientX - startX;
+        const maxWidth = Math.min(
+          600,
+          Math.max(400, Math.floor(window.innerWidth * 0.45))
+        );
+        const newWidth = Math.min(maxWidth, Math.max(220, startWidth + deltaX));
+        lastWidth = newWidth;
+        setChannelsWidth(newWidth);
+      };
+
+      const onMouseUp = () => {
+        setIsResizing(false);
+        setChannelsWidthCookie(String(Math.round(lastWidth)));
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    },
+    [channelsWidth, setChannelsWidthCookie]
+  );
+
+  const resetChannelsWidth = useCallback(() => {
+    setChannelsWidth(260);
+    setChannelsWidthCookie('260');
+  }, [setChannelsWidthCookie]);
   const { isLoading, data: integrations, mutate } = useIntegrationList();
 
   const totalNonDisabledChannels = useMemo(() => {
@@ -637,12 +692,20 @@ export const LaunchesComponent = () => {
             onClick={() => setChannelsOpen(false)}
           />
         )}
+        {isResizing && (
+          <div className="fixed inset-0 z-[9999] cursor-col-resize select-none" />
+        )}
         <div
+          style={
+            collapseMenu !== '1' && !channelsOpen
+              ? { width: `${channelsWidth}px` }
+              : undefined
+          }
           className={clsx(
-            'flex relative flex-col',
+            'flex relative flex-col shrink-0',
             collapseMenu === '1' && !channelsOpen
               ? 'group sidebar w-[100px]'
-              : 'w-[260px]',
+              : '',
             channelsOpen
               ? 'mobile:fixed mobile:inset-x-0 mobile:bottom-0 mobile:z-[150] mobile:w-full mobile:max-h-[80vh] mobile:rounded-t-[16px] mobile:overflow-hidden'
               : 'mobile:hidden'
@@ -650,7 +713,8 @@ export const LaunchesComponent = () => {
         >
           <div
             className={clsx(
-              'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all absolute start-0 top-0 w-full h-full mobile:static mobile:h-auto mobile:max-h-[80vh] mobile:pb-[80px] overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor'
+              'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] absolute start-0 top-0 w-full h-full mobile:static mobile:h-auto mobile:max-h-[80vh] mobile:pb-[80px] overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor',
+              !isResizing && 'transition-all'
             )}
           >
             <div className="flex items-center">
@@ -757,6 +821,29 @@ export const LaunchesComponent = () => {
             </div>
           </div>
         </div>
+        {collapseMenu !== '1' && (
+          <div
+            onMouseDown={startResizing}
+            onDoubleClick={resetChannelsWidth}
+            className={clsx(
+              'hidden mobile:hidden md:flex relative group/resizer items-center justify-center w-[10px] -mx-[5px] z-20 cursor-col-resize select-none shrink-0',
+              isResizing && 'is-resizing'
+            )}
+            title={t(
+              'drag_to_resize_channels',
+              'Drag to resize, double click to reset'
+            )}
+          >
+            <div
+              className={clsx(
+                'w-[2px] h-full transition-colors duration-150',
+                isResizing
+                  ? 'bg-primary'
+                  : 'bg-transparent group-hover/resizer:bg-primary/70'
+              )}
+            />
+          </div>
+        )}
         <div className="bg-newBgColorInner flex-1 min-w-0 flex-col flex p-[20px] mobile:p-[12px] gap-[12px] mobile:min-h-[600px]">
           <div className="hidden mobile:flex gap-[8px]">
             <div
